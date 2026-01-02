@@ -1,0 +1,16 @@
+# HomeMic Node Agent Requirements
+
+# Audio capture
+pyaudio==0.2.14
+
+# HTTP client
+requests==2.32.3
+
+# WebSocket client
+websockets==14.1
+
+# Audio processing
+numpy==2.2.1
+
+# System utilities
+psutil==6.1.1
