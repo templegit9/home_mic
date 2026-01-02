@@ -7,6 +7,7 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'ws://10.0.0.120:8420';
 
 export type WebSocketEvent =
     | { type: 'transcription'; data: TranscriptionEvent }
+    | { type: 'initial_state'; transcriptions: TranscriptionEvent[] }
     | { type: 'node_status'; data: NodeStatusEvent }
     | { type: 'keyword_detected'; data: KeywordEvent }
     | { type: 'connected' }
@@ -58,7 +59,7 @@ class WebSocketClient {
         }
 
         this.isManualClose = false;
-        const wsUrl = `${this.url}/ws/dashboard`;
+        const wsUrl = `${this.url}/ws`;
 
         try {
             this.ws = new WebSocket(wsUrl);
@@ -122,6 +123,21 @@ class WebSocketClient {
 
     private handleMessage(data: any): void {
         switch (data.type) {
+            case 'initial_state':
+                // Transform initial state data to match our TranscriptionEvent format
+                const transcriptions = (data.transcriptions || []).map((t: any) => ({
+                    transcription_id: t.id,
+                    node_id: t.node_id,
+                    node_name: t.node_name,
+                    speaker_id: t.speaker_id,
+                    speaker_name: t.speaker_name,
+                    text: t.text,
+                    confidence: t.confidence,
+                    timestamp: t.timestamp,
+                    keywords_detected: [],
+                }));
+                this.emit({ type: 'initial_state', transcriptions });
+                break;
             case 'transcription':
                 this.emit({ type: 'transcription', data: data.data });
                 break;
@@ -130,6 +146,12 @@ class WebSocketClient {
                 break;
             case 'keyword_detected':
                 this.emit({ type: 'keyword_detected', data: data.data });
+                break;
+            case 'ping':
+                // Don't log pings
+                break;
+            case 'pong':
+                // Don't log pongs
                 break;
             default:
                 console.log('[WebSocket] Unknown message type:', data.type);

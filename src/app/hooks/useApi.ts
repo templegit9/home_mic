@@ -179,7 +179,7 @@ export function useLiveTranscriptions(maxItems: number = 50) {
     const [transcriptions, setTranscriptions] = useState<TranscriptionEvent[]>([]);
     const { isConnected, lastEvent } = useWebSocket();
 
-    // Load initial transcriptions from API
+    // Load initial transcriptions from API as fallback
     useEffect(() => {
         api.getRecentTranscriptions(30).then((data) => {
             const events: TranscriptionEvent[] = data.map((t) => ({
@@ -197,9 +197,14 @@ export function useLiveTranscriptions(maxItems: number = 50) {
         }).catch(console.error);
     }, []);
 
-    // Add new transcriptions from WebSocket
+    // Handle WebSocket events
     useEffect(() => {
-        if (lastEvent?.type === 'transcription') {
+        if (!lastEvent) return;
+
+        if (lastEvent.type === 'initial_state') {
+            // Use WebSocket initial state if available
+            setTranscriptions(lastEvent.transcriptions.slice(0, maxItems));
+        } else if (lastEvent.type === 'transcription') {
             setTranscriptions((prev) =>
                 [lastEvent.data, ...prev].slice(0, maxItems)
             );
@@ -208,3 +213,4 @@ export function useLiveTranscriptions(maxItems: number = 50) {
 
     return { transcriptions, isConnected };
 }
+

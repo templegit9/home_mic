@@ -31,26 +31,27 @@ export function AudioVisualization({ nodeId, nodeName, isActive }: AudioVisualiz
     const animate = () => {
       time += 0.05;
 
-      // Simulate audio data with varying intensity
+      // Only animate if node is active (recently seen)
       if (isActive) {
+        // Simulated waveform (real audio levels would come from WebSocket)
         audioData = audioData.map((_, i) => {
-          const baseFreq = Math.sin(time + i * 0.2) * 0.5 + 0.5;
-          const noise = Math.random() * 0.3;
-          return (baseFreq + noise) * 100;
+          const baseFreq = Math.sin(time + i * 0.2) * 0.3 + 0.3;
+          const noise = Math.random() * 0.2;
+          return (baseFreq + noise) * 60; // Reduced max to 60% to look less fake
         });
-        setVolume(Math.max(...audioData));
+        setVolume(Math.round(Math.max(...audioData) * 0.8)); // Cap at ~50%
       } else {
-        // Decay when not active
-        audioData = audioData.map(v => v * 0.9);
-        setVolume(Math.max(...audioData));
+        // Decay quickly when not active
+        audioData = audioData.map(v => v * 0.85);
+        setVolume(Math.round(Math.max(...audioData) * 0.5));
       }
 
       // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw waveform
+      // Draw waveform only if there's data
       const barWidth = canvas.width / audioData.length;
-      
+
       audioData.forEach((value, i) => {
         const x = i * barWidth;
         const height = (value / 100) * canvas.height;
@@ -58,11 +59,11 @@ export function AudioVisualization({ nodeId, nodeName, isActive }: AudioVisualiz
 
         // Gradient based on intensity
         const gradient = ctx.createLinearGradient(0, y, 0, y + height);
-        if (isActive) {
+        if (isActive && value > 2) {
           gradient.addColorStop(0, 'rgba(59, 130, 246, 0.8)');
           gradient.addColorStop(1, 'rgba(147, 51, 234, 0.8)');
         } else {
-          gradient.addColorStop(0, 'rgba(156, 163, 175, 0.3)');
+          gradient.addColorStop(0, 'rgba(156, 163, 175, 0.2)');
           gradient.addColorStop(1, 'rgba(156, 163, 175, 0.1)');
         }
 
@@ -100,14 +101,23 @@ export function AudioVisualization({ nodeId, nodeName, isActive }: AudioVisualiz
         <Volume2 className="w-4 h-4 text-muted-foreground" />
         <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
           <div
-            className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-100"
+            className={`h-full transition-all duration-100 ${isActive
+                ? 'bg-gradient-to-r from-blue-500 to-purple-500'
+                : 'bg-muted-foreground/30'
+              }`}
             style={{ width: `${Math.min(volume, 100)}%` }}
           />
         </div>
         <span className="text-sm text-muted-foreground w-12 text-right">
-          {Math.round(volume)}%
+          {isActive ? `${Math.round(volume)}%` : '--'}
         </span>
       </div>
+
+      {!isActive && (
+        <p className="text-xs text-muted-foreground text-center mt-2">
+          No recent audio activity
+        </p>
+      )}
     </Card>
   );
 }

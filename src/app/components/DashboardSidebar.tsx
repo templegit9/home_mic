@@ -9,9 +9,18 @@ export function DashboardSidebar() {
     const { speakers } = useSpeakers();
 
     // Determine which nodes are "active" based on recent last_seen
+    // Backend returns UTC timestamps without 'Z' suffix, so we append it for proper parsing
     const now = Date.now();
+    const FIVE_MINUTES_MS = 5 * 60 * 1000;
     const activeNodeIds = nodes
-        .filter(n => n.status === 'online' && (now - new Date(n.last_seen).getTime()) < 5 * 60 * 1000)
+        .filter(n => {
+            if (n.status !== 'online') return false;
+            // Parse timestamp as UTC by appending 'Z' if missing
+            const lastSeenStr = n.last_seen.endsWith('Z') ? n.last_seen : n.last_seen + 'Z';
+            const lastSeenMs = new Date(lastSeenStr).getTime();
+            const ageMs = now - lastSeenMs;
+            return ageMs < FIVE_MINUTES_MS;
+        })
         .map(n => n.id);
 
     return (
