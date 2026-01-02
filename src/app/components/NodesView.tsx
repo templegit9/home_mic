@@ -1,49 +1,45 @@
-import { useState } from 'react';
+import { useCallback } from 'react';
 import { NodeCard } from './NodeCard';
 import { Button } from './ui/button';
-import { Plus } from 'lucide-react';
+import { Plus, RefreshCw, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-
-interface Node {
-  id: string;
-  name: string;
-  location: string;
-  status: 'online' | 'offline' | 'warning';
-  audioFiltering: boolean;
-  latency: number;
-  lastSeen: Date;
-}
+import { useNodes } from '../hooks/useApi';
+import { api } from '../lib/api';
 
 export function NodesView() {
-  const [nodes, setNodes] = useState<Node[]>([
-    {
-      id: 'node-1',
-      name: 'Living Room Node',
-      location: 'Living Room',
-      status: 'online',
-      audioFiltering: true,
-      latency: 1420,
-      lastSeen: new Date(),
-    },
-    {
-      id: 'node-2',
-      name: 'Kitchen Node',
-      location: 'Kitchen',
-      status: 'online',
-      audioFiltering: false,
-      latency: 1580,
-      lastSeen: new Date(),
-    },
-  ]);
+  const { nodes, loading, error, refresh, setNodes } = useNodes();
 
-  const handleFilteringToggle = (id: string, enabled: boolean) => {
-    setNodes(prev =>
-      prev.map(node =>
-        node.id === id ? { ...node, audioFiltering: enabled } : node
-      )
+  const handleFilteringToggle = useCallback(async (id: string, enabled: boolean) => {
+    try {
+      const updated = await api.updateNodeFiltering(id, enabled);
+      setNodes(prev =>
+        prev.map(node =>
+          node.id === id ? { ...node, audio_filtering: updated.audio_filtering } : node
+        )
+      );
+      toast.success(`Audio filtering ${enabled ? 'enabled' : 'disabled'}`);
+    } catch (e) {
+      toast.error('Failed to update node filtering');
+      console.error(e);
+    }
+  }, [setNodes]);
+
+  const handleAddNode = useCallback(async () => {
+    // For now, show a toast - could open a modal in the future
+    toast.info('New nodes register automatically when they connect');
+  }, []);
+
+  if (error) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-destructive mb-4">Failed to load nodes</p>
+        <Button onClick={refresh} variant="outline">
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Retry
+        </Button>
+      </div>
     );
-    toast.success(`Audio filtering ${enabled ? 'enabled' : 'disabled'}`);
-  };
+  }
 
   return (
     <div className="space-y-4">
@@ -54,21 +50,47 @@ export function NodesView() {
             Manage distributed microphone nodes across your home
           </p>
         </div>
-        <Button>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Node
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" size="icon" onClick={refresh} disabled={loading}>
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
+          </Button>
+          <Button onClick={handleAddNode}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Node
+          </Button>
+        </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {nodes.map((node) => (
-          <NodeCard
-            key={node.id}
-            {...node}
-            onFilteringToggle={handleFilteringToggle}
-          />
-        ))}
-      </div>
+      {loading && nodes.length === 0 ? (
+        <div className="flex justify-center py-8">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : nodes.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground">
+          <p>No nodes registered yet</p>
+          <p className="text-sm">Run the setup script on a Raspberry Pi to add a node</p>
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {nodes.map((node) => (
+            <NodeCard
+              key={node.id}
+              id={node.id}
+              name={node.name}
+              location={node.location}
+              status={node.status}
+              audioFiltering={node.audio_filtering}
+              latency={node.latency}
+              lastSeen={new Date(node.last_seen)}
+              onFilteringToggle={handleFilteringToggle}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
