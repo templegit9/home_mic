@@ -341,27 +341,37 @@ function main() {
   echo -e "${BL}Includes: whisper.cpp, FastAPI backend, speaker identification${CL}"
   echo ""
   
-  # Prompt for settings
-  while true; do
-    read -p "Use default settings? (y/n): " yn
-    case $yn in
-      [Yy]* ) 
-        default_settings
-        break
-        ;;
-      [Nn]* )
-        echo -e "${YW}Advanced settings not yet implemented. Using defaults.${CL}"
-        default_settings
-        break
-        ;;
-      * )
-        echo "Please answer yes or no."
-        ;;
-    esac
-  done
-  
-  echo ""
-  read -p "Press Enter to create the container, or Ctrl+C to cancel..."
+  # Auto-detect if running interactively or via pipe
+  if [ -t 0 ]; then
+    # Interactive mode - prompt for settings
+    while true; do
+      read -p "Use default settings? (y/n): " yn
+      case $yn in
+        [Yy]* ) 
+          default_settings
+          break
+          ;;
+        [Nn]* )
+          echo -e "${YW}Advanced settings not yet implemented. Using defaults.${CL}"
+          default_settings
+          break
+          ;;
+        * )
+          echo "Please answer yes or no."
+          ;;
+      esac
+    done
+    
+    echo ""
+    read -p "Press Enter to create the container, or Ctrl+C to cancel..."
+  else
+    # Piped mode (curl | bash) - use defaults automatically
+    echo -e "${YW}Running in non-interactive mode. Using default settings.${CL}"
+    default_settings
+    echo ""
+    echo -e "${BL}Starting installation in 3 seconds... (Ctrl+C to cancel)${CL}"
+    sleep 3
+  fi
   
   build_container
   install_dependencies
@@ -373,3 +383,4 @@ function main() {
 }
 
 main "$@"
+
