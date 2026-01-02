@@ -1,6 +1,7 @@
 """
 Transcription routes and audio ingestion
 """
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
@@ -9,6 +10,7 @@ from pydantic import BaseModel
 
 from ..database import get_db, Transcription, Node, Speaker, Keyword, KeywordDetection
 from ..services import get_transcription_service, get_speaker_service, AudioProcessor
+from .websocket import broadcast_transcription
 
 router = APIRouter(prefix="/api/transcriptions", tags=["transcriptions"])
 
@@ -207,6 +209,19 @@ async def ingest_audio(
         if speaker:
             speaker_name = speaker.name
     
+    # Broadcast to all connected WebSocket clients for live updates
+    asyncio.create_task(broadcast_transcription({
+        "transcription_id": transcription.id,
+        "node_id": node_id,
+        "node_name": node.location if node else None,
+        "speaker_id": speaker_id,
+        "speaker_name": speaker_name,
+        "text": text,
+        "confidence": confidence,
+        "timestamp": transcription.timestamp.isoformat(),
+        "keywords_detected": detected_keywords
+    }))
+
     return {
         "status": "transcribed",
         "transcription_id": transcription.id,
