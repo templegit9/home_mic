@@ -149,17 +149,31 @@ class AudioProcessor:
     def wav_to_bytes(wav_data: bytes) -> tuple[bytes, int]:
         """
         Extract raw PCM bytes from WAV format.
+        Converts stereo to mono if necessary.
         
         Args:
             wav_data: WAV file bytes
         
         Returns:
-            Tuple of (raw PCM bytes, sample rate)
+            Tuple of (raw PCM bytes as mono, sample rate)
         """
         buffer = io.BytesIO(wav_data)
         with wave.open(buffer, 'rb') as wav_file:
             sample_rate = wav_file.getframerate()
+            n_channels = wav_file.getnchannels()
+            sample_width = wav_file.getsampwidth()
             audio_data = wav_file.readframes(wav_file.getnframes())
+        
+        # Convert stereo to mono by averaging channels
+        if n_channels == 2:
+            # Convert to numpy array for manipulation
+            audio_array = np.frombuffer(audio_data, dtype=np.int16)
+            # Reshape to (n_samples, 2) for stereo
+            audio_array = audio_array.reshape(-1, 2)
+            # Average the two channels
+            mono_array = np.mean(audio_array, axis=1).astype(np.int16)
+            audio_data = mono_array.tobytes()
+        
         return audio_data, sample_rate
     
     @staticmethod
