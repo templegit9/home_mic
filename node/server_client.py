@@ -8,12 +8,14 @@ import websockets
 import json
 import logging
 import threading
+import wave
+import io
 from typing import Optional, Callable, Dict, Any
 from datetime import datetime
 
 from config import (
     SERVER_URL, NODE_ID, NODE_NAME, NODE_LOCATION,
-    HEARTBEAT_INTERVAL, RETRY_DELAY, MAX_RETRIES
+    HEARTBEAT_INTERVAL, RETRY_DELAY, MAX_RETRIES, SAMPLE_RATE
 )
 
 logger = logging.getLogger(__name__)
@@ -75,15 +77,29 @@ class ServerClient:
             logger.error(f"Heartbeat failed: {e}")
             return False
     
-    def send_audio(self, audio_data: bytes) -> Dict[str, Any]:
+    @staticmethod
+    def pcm_to_wav(audio_data: bytes, sample_rate: int = SAMPLE_RATE, channels: int = 1) -> bytes:
+        """Convert raw PCM audio to WAV format"""
+        buffer = io.BytesIO()
+        with wave.open(buffer, 'wb') as wav_file:
+            wav_file.setnchannels(channels)
+            wav_file.setsampwidth(2)  # 16-bit audio
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(audio_data)
+        return buffer.getvalue()
+    
+    def send_audio(self, audio_data: bytes, sample_rate: int = SAMPLE_RATE) -> Dict[str, Any]:
         """Send audio data for transcription"""
         if not self.node_id:
             logger.warning("Cannot send audio: node not registered")
             return {"status": "error", "message": "Node not registered"}
         
         try:
+            # Convert raw PCM to WAV format
+            wav_data = self.pcm_to_wav(audio_data, sample_rate)
+            
             files = {
-                'audio': ('audio.wav', audio_data, 'audio/wav')
+                'audio': ('audio.wav', wav_data, 'audio/wav')
             }
             
             response = self.session.post(
