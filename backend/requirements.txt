@@ -13,6 +13,7 @@ sqlalchemy==2.0.36
 # Audio processing
 numpy==2.2.1
 scipy==1.15.0
+faster-whisper==1.1.0
 
 # Speaker identification
 speechbrain==1.0.2

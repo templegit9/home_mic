@@ -1,36 +1,58 @@
 """
 Whisper Transcription Service
-Uses whisper.cpp for local speech-to-text
+Uses faster-whisper for efficient CPU speech-to-text
 """
-import subprocess
-import tempfile
 import os
+import tempfile
 import wave
 import numpy as np
 from pathlib import Path
 from typing import Optional, Tuple
 import logging
 
-from ..config import WHISPER_MAIN, WHISPER_MODEL, SAMPLE_RATE
+from ..config import SAMPLE_RATE
 
 logger = logging.getLogger(__name__)
 
+# Global model cache
+_whisper_model = None
+
+
+def get_whisper_model():
+    """Lazy load the whisper model"""
+    global _whisper_model
+    if _whisper_model is None:
+        try:
+            from faster_whisper import WhisperModel
+            
+            # Use base model for balance of speed and quality
+            # Options: tiny, base, small, medium, large
+            model_size = os.environ.get("WHISPER_MODEL_SIZE", "base")
+            
+            logger.info(f"Loading faster-whisper model: {model_size}")
+            _whisper_model = WhisperModel(
+                model_size,
+                device="cpu",
+                compute_type="int8",  # Use int8 for faster CPU inference
+                cpu_threads=2
+            )
+            logger.info(f"faster-whisper model loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load faster-whisper: {e}")
+            raise
+    return _whisper_model
+
 
 class TranscriptionService:
-    """Handles audio transcription using whisper.cpp"""
+    """Handles audio transcription using faster-whisper"""
     
     def __init__(self):
-        self.whisper_main = WHISPER_MAIN
-        self.model_path = WHISPER_MODEL
-        self._validate_installation()
-    
-    def _validate_installation(self):
-        """Verify whisper.cpp is properly installed"""
-        if not self.whisper_main.exists():
-            raise RuntimeError(f"whisper.cpp main binary not found at {self.whisper_main}")
-        if not self.model_path.exists():
-            raise RuntimeError(f"Whisper model not found at {self.model_path}")
-        logger.info(f"Whisper.cpp initialized with model: {self.model_path.name}")
+        # Pre-load model on init
+        try:
+            get_whisper_model()
+            logger.info("Transcription service initialized with faster-whisper")
+        except Exception as e:
+            logger.warning(f"Could not pre-load whisper model: {e}")
     
     def transcribe_audio(self, audio_data: bytes, sample_rate: int = SAMPLE_RATE) -> Tuple[str, float]:
         """
@@ -55,39 +77,42 @@ class TranscriptionService:
                 wav_file.writeframes(audio_data)
         
         try:
-            # Run whisper.cpp
-            result = subprocess.run(
-                [
-                    str(self.whisper_main),
-                    "-m", str(self.model_path),
-                    "-f", tmp_path,
-                    "--no-timestamps",
-                    "--language", "en",
-                    "-t", "2"  # Use 2 threads
-                ],
-                capture_output=True,
-                text=True,
-                timeout=180  # 3 minute timeout for CPU transcription
+            model = get_whisper_model()
+            
+            # Transcribe with faster-whisper
+            segments, info = model.transcribe(
+                tmp_path,
+                language="en",
+                beam_size=5,
+                vad_filter=True,  # Use built-in VAD
+                vad_parameters=dict(min_silence_duration_ms=500)
             )
             
-            if result.returncode != 0:
-                logger.error(f"Whisper error: {result.stderr}")
-                return "", 0.0
+            # Collect all text segments
+            text_parts = []
+            total_confidence = 0.0
+            segment_count = 0
             
-            # Parse output - whisper.cpp outputs to stdout
-            text = result.stdout.strip()
+            for segment in segments:
+                text_parts.append(segment.text.strip())
+                # faster-whisper provides avg_logprob, convert to confidence
+                if segment.avg_logprob:
+                    # logprob is negative, closer to 0 = more confident
+                    confidence = min(1.0, max(0.0, 1.0 + segment.avg_logprob / 5.0))
+                    total_confidence += confidence
+                    segment_count += 1
             
-            # Clean up common artifacts
+            text = " ".join(text_parts)
             text = self._clean_transcription(text)
             
-            # Estimate confidence based on output (whisper.cpp doesn't provide confidence directly)
-            confidence = self._estimate_confidence(text, audio_data)
+            # Average confidence
+            if segment_count > 0:
+                avg_confidence = total_confidence / segment_count
+            else:
+                avg_confidence = 0.0 if not text else 0.8
             
-            return text, confidence
+            return text, avg_confidence
             
-        except subprocess.TimeoutExpired:
-            logger.error("Whisper transcription timed out")
-            return "", 0.0
         except Exception as e:
             logger.error(f"Transcription error: {e}")
             return "", 0.0
@@ -95,10 +120,6 @@ class TranscriptionService:
             # Clean up temp file
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
-            # Also remove .txt output file if created
-            txt_path = tmp_path.replace(".wav", ".txt")
-            if os.path.exists(txt_path):
-                os.unlink(txt_path)
     
     def transcribe_file(self, file_path: Path) -> Tuple[str, float]:
         """
@@ -114,27 +135,20 @@ class TranscriptionService:
             raise FileNotFoundError(f"Audio file not found: {file_path}")
         
         try:
-            result = subprocess.run(
-                [
-                    str(self.whisper_main),
-                    "-m", str(self.model_path),
-                    "-f", str(file_path),
-                    "--no-timestamps",
-                    "--language", "en"
-                ],
-                capture_output=True,
-                text=True,
-                timeout=120
+            model = get_whisper_model()
+            
+            segments, info = model.transcribe(
+                str(file_path),
+                language="en",
+                beam_size=5,
+                vad_filter=True
             )
             
-            if result.returncode != 0:
-                logger.error(f"Whisper error: {result.stderr}")
-                return "", 0.0
+            text_parts = [segment.text.strip() for segment in segments]
+            text = " ".join(text_parts)
+            text = self._clean_transcription(text)
             
-            text = self._clean_transcription(result.stdout.strip())
-            confidence = 0.9 if text else 0.0  # Simple confidence for file transcription
-            
-            return text, confidence
+            return text, 0.9 if text else 0.0
             
         except Exception as e:
             logger.error(f"File transcription error: {e}")
@@ -154,6 +168,8 @@ class TranscriptionService:
             "[inaudible]",
             "[MUSIC]",
             "(music)",
+            "Thank you.",  # Common whisper hallucination
+            "Thanks for watching!",
         ]
         
         for artifact in artifacts:
@@ -163,42 +179,6 @@ class TranscriptionService:
         text = " ".join(text.split())
         
         return text.strip()
-    
-    def _estimate_confidence(self, text: str, audio_data: bytes) -> float:
-        """
-        Estimate transcription confidence.
-        Since whisper.cpp doesn't provide confidence scores, we estimate based on:
-        - Audio energy (louder = more confident)
-        - Text length relative to audio length
-        """
-        if not text:
-            return 0.0
-        
-        try:
-            # Convert bytes to numpy array
-            audio_array = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
-            
-            # Calculate RMS energy
-            rms = np.sqrt(np.mean(audio_array ** 2))
-            
-            # Normalize RMS to 0-1 range (assuming 16-bit audio)
-            normalized_rms = min(rms / 10000.0, 1.0)
-            
-            # Base confidence on audio energy
-            confidence = 0.7 + (normalized_rms * 0.25)
-            
-            # Adjust based on text length
-            audio_duration = len(audio_data) / (SAMPLE_RATE * 2)  # 2 bytes per sample
-            words_per_second = len(text.split()) / audio_duration if audio_duration > 0 else 0
-            
-            # Normal speech is 2-4 words per second
-            if 1.5 <= words_per_second <= 5.0:
-                confidence += 0.05
-            
-            return min(confidence, 0.99)
-            
-        except Exception:
-            return 0.85  # Default confidence
 
 
 # Singleton instance
