@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -7,8 +7,10 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { ScrollArea } from './ui/scroll-area';
-import { MicOff, Clock, Shield, Eye, AlertTriangle } from 'lucide-react';
+import { MicOff, Clock, Shield, Eye, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import { useNodes } from '../hooks/useApi';
+import { api } from '../lib/api';
 
 interface PrivacyZone {
   id: string;
@@ -17,7 +19,6 @@ interface PrivacyZone {
   startTime: Date;
   endTime?: Date;
   duration?: number;
-  reason: string;
   active: boolean;
 }
 
@@ -25,93 +26,135 @@ interface QuietHours {
   enabled: boolean;
   startTime: string;
   endTime: string;
-  days: string[];
 }
 
 export function PrivacyControls() {
-  const [nodes, setNodes] = useState([
-    { id: 'node-1', name: 'Living Room', muted: false },
-    { id: 'node-2', name: 'Kitchen', muted: false },
-  ]);
+  const { nodes, loading, error, refresh, setNodes } = useNodes();
 
-  const [privacyZones, setPrivacyZones] = useState<PrivacyZone[]>([
-    {
-      id: '1',
-      nodeId: 'node-1',
-      nodeName: 'Living Room',
-      startTime: new Date(Date.now() - 3600000),
-      endTime: new Date(Date.now() - 1800000),
-      reason: 'Private conversation',
-      active: false,
-    },
-  ]);
-
+  const [privacyZones, setPrivacyZones] = useState<PrivacyZone[]>([]);
   const [quietHours, setQuietHours] = useState<QuietHours>({
-    enabled: true,
+    enabled: false,
     startTime: '22:00',
     endTime: '07:00',
-    days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'],
   });
-
   const [globalMute, setGlobalMute] = useState(false);
+  const [mutingAll, setMutingAll] = useState(false);
+  const [mutingNode, setMutingNode] = useState<string | null>(null);
 
-  const toggleNodeMute = (nodeId: string) => {
-    setNodes(prev =>
-      prev.map(node =>
-        node.id === nodeId ? { ...node, muted: !node.muted } : node
-      )
-    );
-    const node = nodes.find(n => n.id === nodeId);
-    toast.success(`${node?.name} ${node?.muted ? 'unmuted' : 'muted'}`);
-  };
+  const toggleNodeMute = useCallback(async (nodeId: string, currentlyMuted: boolean) => {
+    setMutingNode(nodeId);
+    try {
+      if (currentlyMuted) {
+        await api.unmuteNode(nodeId);
+      } else {
+        await api.muteNode(nodeId);
+      }
 
-  const toggleGlobalMute = () => {
-    setGlobalMute(!globalMute);
-    toast.success(`All nodes ${globalMute ? 'unmuted' : 'muted'}`);
-  };
+      setNodes(prev =>
+        prev.map(node =>
+          node.id === nodeId ? { ...node, audio_filtering: !currentlyMuted } : node
+        )
+      );
 
-  const createPrivacyZone = (nodeId: string, duration: number) => {
+      const node = nodes.find(n => n.id === nodeId);
+      toast.success(`${node?.location || 'Node'} ${currentlyMuted ? 'unmuted' : 'muted'}`);
+    } catch (e) {
+      toast.error('Failed to update node');
+      console.error(e);
+    } finally {
+      setMutingNode(null);
+    }
+  }, [nodes, setNodes]);
+
+  const toggleGlobalMute = useCallback(async () => {
+    setMutingAll(true);
+    try {
+      if (globalMute) {
+        await api.unmuteAll();
+      } else {
+        await api.muteAll();
+      }
+      setGlobalMute(!globalMute);
+      toast.success(`All nodes ${globalMute ? 'unmuted' : 'muted'}`);
+      refresh();
+    } catch (e) {
+      toast.error('Failed to update');
+      console.error(e);
+    } finally {
+      setMutingAll(false);
+    }
+  }, [globalMute, refresh]);
+
+  const createPrivacyZone = useCallback(async (nodeId: string, duration: number) => {
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return;
 
-    const newZone: PrivacyZone = {
-      id: Date.now().toString(),
-      nodeId,
-      nodeName: node.name,
-      startTime: new Date(),
-      duration,
-      reason: 'Temporary privacy zone',
-      active: true,
-    };
+    try {
+      await api.muteNode(nodeId, duration);
 
-    setPrivacyZones(prev => [...prev, newZone]);
-    toast.success(`Privacy zone activated for ${node.name} (${duration} min)`);
+      const newZone: PrivacyZone = {
+        id: Date.now().toString(),
+        nodeId,
+        nodeName: node.location,
+        startTime: new Date(),
+        duration,
+        active: true,
+      };
 
-    // Auto-deactivate after duration
-    setTimeout(() => {
-      setPrivacyZones(prev =>
-        prev.map(zone =>
-          zone.id === newZone.id
-            ? { ...zone, active: false, endTime: new Date() }
-            : zone
-        )
-      );
-      toast.info(`Privacy zone ended for ${node.name}`);
-    }, duration * 60000);
-  };
+      setPrivacyZones(prev => [...prev, newZone]);
+      toast.success(`Privacy zone activated for ${node.location} (${duration} min)`);
+
+      // Auto-deactivate after duration
+      setTimeout(() => {
+        setPrivacyZones(prev =>
+          prev.map(zone =>
+            zone.id === newZone.id
+              ? { ...zone, active: false, endTime: new Date() }
+              : zone
+          )
+        );
+        toast.info(`Privacy zone ended for ${node.location}`);
+        refresh();
+      }, duration * 60000);
+    } catch (e) {
+      toast.error('Failed to create privacy zone');
+      console.error(e);
+    }
+  }, [nodes, refresh]);
 
   const updateQuietHours = (updates: Partial<QuietHours>) => {
     setQuietHours(prev => ({ ...prev, ...updates }));
     toast.success('Quiet hours updated');
   };
 
+  if (error) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-destructive mb-4">Failed to load nodes</p>
+        <Button onClick={refresh} variant="outline">
+          <RefreshCw className="w-4 h-4 mr-2" />
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      <div>
-        <h2>Privacy Controls</h2>
-        <p className="text-sm text-muted-foreground">
-          Manage recording permissions and privacy zones
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2>Privacy Controls</h2>
+          <p className="text-sm text-muted-foreground">
+            Manage recording permissions and privacy zones
+          </p>
+        </div>
+        <Button variant="outline" size="icon" onClick={refresh} disabled={loading}>
+          {loading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <RefreshCw className="w-4 h-4" />
+          )}
+        </Button>
       </div>
 
       {/* Global Controls */}
@@ -140,80 +183,99 @@ export function PrivacyControls() {
               </p>
             </div>
           </div>
-          <Switch
-            id="global-mute"
-            checked={globalMute}
-            onCheckedChange={toggleGlobalMute}
-          />
+          {mutingAll ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <Switch
+              id="global-mute"
+              checked={globalMute}
+              onCheckedChange={toggleGlobalMute}
+            />
+          )}
         </div>
       </Card>
 
       {/* Individual Node Controls */}
       <Card className="p-4">
         <h3 className="mb-4">Node Controls</h3>
-        <div className="space-y-3">
-          {nodes.map(node => (
-            <div key={node.id} className="flex items-center justify-between p-3 rounded-lg border bg-card">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${node.muted ? 'bg-red-500/10' : 'bg-blue-500/10'}`}>
-                  <MicOff className={`w-4 h-4 ${node.muted ? 'text-red-500' : 'text-blue-500'}`} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{node.name}</span>
-                    {node.muted && <Badge variant="secondary">Muted</Badge>}
+        {loading && nodes.length === 0 ? (
+          <div className="flex justify-center py-4">
+            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : nodes.length === 0 ? (
+          <p className="text-center text-muted-foreground py-4">No nodes registered</p>
+        ) : (
+          <div className="space-y-3">
+            {nodes.map(node => (
+              <div key={node.id} className="flex items-center justify-between p-3 rounded-lg border bg-card">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${node.audio_filtering ? 'bg-red-500/10' : 'bg-blue-500/10'}`}>
+                    <MicOff className={`w-4 h-4 ${node.audio_filtering ? 'text-red-500' : 'text-blue-500'}`} />
                   </div>
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button variant="link" className="h-auto p-0 text-xs">
-                        Create privacy zone
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>Create Privacy Zone - {node.name}</DialogTitle>
-                        <DialogDescription>
-                          Temporarily disable recording for a specific duration
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="space-y-3 pt-4">
-                        <Button
-                          onClick={() => createPrivacyZone(node.id, 30)}
-                          variant="outline"
-                          className="w-full justify-start"
-                        >
-                          <Clock className="w-4 h-4 mr-2" />
-                          30 minutes
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{node.location}</span>
+                      <Badge variant={node.status === 'online' ? 'default' : 'secondary'}>
+                        {node.status}
+                      </Badge>
+                      {node.audio_filtering && <Badge variant="secondary">Muted</Badge>}
+                    </div>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button variant="link" className="h-auto p-0 text-xs">
+                          Create privacy zone
                         </Button>
-                        <Button
-                          onClick={() => createPrivacyZone(node.id, 60)}
-                          variant="outline"
-                          className="w-full justify-start"
-                        >
-                          <Clock className="w-4 h-4 mr-2" />
-                          1 hour
-                        </Button>
-                        <Button
-                          onClick={() => createPrivacyZone(node.id, 180)}
-                          variant="outline"
-                          className="w-full justify-start"
-                        >
-                          <Clock className="w-4 h-4 mr-2" />
-                          3 hours
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Create Privacy Zone - {node.location}</DialogTitle>
+                          <DialogDescription>
+                            Temporarily disable recording for a specific duration
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-3 pt-4">
+                          <Button
+                            onClick={() => createPrivacyZone(node.id, 30)}
+                            variant="outline"
+                            className="w-full justify-start"
+                          >
+                            <Clock className="w-4 h-4 mr-2" />
+                            30 minutes
+                          </Button>
+                          <Button
+                            onClick={() => createPrivacyZone(node.id, 60)}
+                            variant="outline"
+                            className="w-full justify-start"
+                          >
+                            <Clock className="w-4 h-4 mr-2" />
+                            1 hour
+                          </Button>
+                          <Button
+                            onClick={() => createPrivacyZone(node.id, 180)}
+                            variant="outline"
+                            className="w-full justify-start"
+                          >
+                            <Clock className="w-4 h-4 mr-2" />
+                            3 hours
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
                 </div>
+                {mutingNode === node.id ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Switch
+                    checked={node.audio_filtering}
+                    onCheckedChange={() => toggleNodeMute(node.id, node.audio_filtering)}
+                    disabled={globalMute}
+                  />
+                )}
               </div>
-              <Switch
-                checked={node.muted}
-                onCheckedChange={() => toggleNodeMute(node.id)}
-                disabled={globalMute}
-              />
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </Card>
 
       {/* Quiet Hours */}
@@ -283,30 +345,32 @@ export function PrivacyControls() {
       </Card>
 
       {/* Privacy Zone History */}
-      <Card className="p-4">
-        <h3 className="mb-4">Privacy Zone History</h3>
-        <ScrollArea className="h-[200px]">
-          <div className="space-y-2">
-            {privacyZones.map(zone => (
-              <div key={zone.id} className="flex items-center justify-between p-2 rounded border text-sm">
-                <div className="flex items-center gap-2">
-                  <Eye className="w-4 h-4 text-muted-foreground" />
-                  <div>
-                    <span className="font-medium">{zone.nodeName}</span>
-                    <p className="text-xs text-muted-foreground">
-                      {zone.startTime.toLocaleString()}
-                      {zone.endTime && ` - ${zone.endTime.toLocaleTimeString()}`}
-                    </p>
+      {privacyZones.length > 0 && (
+        <Card className="p-4">
+          <h3 className="mb-4">Privacy Zone History</h3>
+          <ScrollArea className="h-[200px]">
+            <div className="space-y-2">
+              {privacyZones.map(zone => (
+                <div key={zone.id} className="flex items-center justify-between p-2 rounded border text-sm">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <span className="font-medium">{zone.nodeName}</span>
+                      <p className="text-xs text-muted-foreground">
+                        {zone.startTime.toLocaleString()}
+                        {zone.endTime && ` - ${zone.endTime.toLocaleTimeString()}`}
+                      </p>
+                    </div>
                   </div>
+                  <Badge variant={zone.active ? 'default' : 'secondary'}>
+                    {zone.active ? 'Active' : 'Ended'}
+                  </Badge>
                 </div>
-                <Badge variant={zone.active ? 'default' : 'secondary'}>
-                  {zone.active ? 'Active' : 'Ended'}
-                </Badge>
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
-      </Card>
+              ))}
+            </div>
+          </ScrollArea>
+        </Card>
+      )}
 
       {/* Privacy Warning */}
       <Card className="p-4 border-yellow-500/20 bg-yellow-500/5">
