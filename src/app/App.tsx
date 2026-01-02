@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { TranscriptionFeed } from './components/TranscriptionFeed';
 import { TranscriptionHistory } from './components/TranscriptionHistory';
-import { AudioVisualization } from './components/AudioVisualization';
+import { DashboardSidebar } from './components/DashboardSidebar';
 import { NodesView } from './components/NodesView';
 import { SpeakerManagement } from './components/SpeakerManagement';
 import { SpeakerCorrection } from './components/SpeakerCorrection';
@@ -17,17 +17,17 @@ import { ConversationContext } from './components/ConversationContext';
 import { Button } from './components/ui/button';
 import { Card } from './components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
-import { 
-  Mic, Radio, Users, Bell, BarChart3, Settings, Shield, 
-  Moon, Sun, Search, TrendingUp, Eye, HardDrive, 
+import {
+  Mic, Radio, Users, Bell, BarChart3, Settings, Shield,
+  Moon, Sun, Search, TrendingUp, Eye, HardDrive,
   AlertCircle, MessageCircle, UserCheck, Activity
 } from 'lucide-react';
 import { Toaster } from './components/ui/sonner';
 
-type View = 
-  | 'dashboard' 
-  | 'nodes' 
-  | 'speakers' 
+type View =
+  | 'dashboard'
+  | 'nodes'
+  | 'speakers'
   | 'speaker-correction'
   | 'reminders'
   | 'history'
@@ -42,7 +42,6 @@ type View =
 export default function App() {
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [activeNodes, setActiveNodes] = useState<string[]>(['node-1']);
 
   useEffect(() => {
     // Check system theme preference
@@ -51,14 +50,6 @@ export default function App() {
     if (isDark) {
       document.documentElement.classList.add('dark');
     }
-
-    // Simulate node activity cycling
-    const interval = setInterval(() => {
-      const nodes = ['node-1', 'node-2'];
-      setActiveNodes([nodes[Math.floor(Math.random() * nodes.length)]]);
-    }, 8000);
-
-    return () => clearInterval(interval);
   }, []);
 
   const toggleTheme = () => {
@@ -74,7 +65,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-background">
       <Toaster />
-      
+
       {/* Header */}
       <header className="border-b bg-card sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4">
@@ -90,7 +81,7 @@ export default function App() {
                 </p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-500/10 text-green-500 border border-green-500/20">
                 <Shield className="w-4 h-4" />
@@ -99,8 +90,8 @@ export default function App() {
               <Button variant="ghost" size="icon" onClick={toggleTheme}>
                 {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
               </Button>
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 size="icon"
                 onClick={() => setActiveView('settings')}
               >
@@ -116,63 +107,63 @@ export default function App() {
         <div className="container mx-auto px-4">
           <Tabs value={activeView} onValueChange={(v) => setActiveView(v as View)}>
             <TabsList className="bg-transparent border-b-0 h-12 p-0 gap-2 flex-wrap">
-              <TabsTrigger 
-                value="dashboard" 
+              <TabsTrigger
+                value="dashboard"
                 className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-3"
               >
                 <BarChart3 className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">Dashboard</span>
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
                 value="nodes"
                 className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-3"
               >
                 <Radio className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">Nodes</span>
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
                 value="speakers"
                 className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-3"
               >
                 <Users className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">Speakers</span>
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
                 value="reminders"
                 className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-3"
               >
                 <Bell className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">Reminders</span>
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
                 value="history"
                 className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-3"
               >
                 <Search className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">History</span>
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
                 value="conversations"
                 className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-3"
               >
                 <MessageCircle className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">Conversations</span>
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
                 value="privacy"
                 className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-3"
               >
                 <Eye className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">Privacy</span>
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
                 value="keywords"
                 className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-3"
               >
                 <AlertCircle className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">Keywords</span>
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
                 value="analytics"
                 className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-3"
               >
@@ -189,70 +180,11 @@ export default function App() {
         {activeView === 'dashboard' && (
           <div className="space-y-6">
             <SystemStatus />
-            
+
             <div className="grid gap-6 lg:grid-cols-2">
               <TranscriptionFeed />
-              
-              <div className="space-y-6">
-                {/* Audio Visualizations */}
-                <div className="space-y-3">
-                  <h3>Live Audio Activity</h3>
-                  <AudioVisualization
-                    nodeId="node-1"
-                    nodeName="Living Room"
-                    isActive={activeNodes.includes('node-1')}
-                  />
-                  <AudioVisualization
-                    nodeId="node-2"
-                    nodeName="Kitchen"
-                    isActive={activeNodes.includes('node-2')}
-                  />
-                </div>
 
-                <Card className="p-4">
-                  <h3 className="mb-4">Quick Stats</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Active Nodes</p>
-                      <p className="text-2xl">2 / 2</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Enrolled Speakers</p>
-                      <p className="text-2xl">3</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Pending Reminders</p>
-                      <p className="text-2xl">3</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Avg. Accuracy</p>
-                      <p className="text-2xl">91%</p>
-                    </div>
-                  </div>
-                </Card>
-
-                <Card className="p-4">
-                  <h3 className="mb-4">Recent Activity</h3>
-                  <div className="space-y-3 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Speaker identified</span>
-                      <span>Alice - Just now</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Reminder created</span>
-                      <span>2 minutes ago</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Node connected</span>
-                      <span>Kitchen - 5 min ago</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Audio filtering enabled</span>
-                      <span>Living Room - 12 min ago</span>
-                    </div>
-                  </div>
-                </Card>
-              </div>
+              <DashboardSidebar />
             </div>
           </div>
         )}
@@ -268,7 +200,7 @@ export default function App() {
         {activeView === 'analytics' && <RoomAnalytics />}
         {activeView === 'health' && <NodeHealthDashboard />}
         {activeView === 'logs' && <SystemLogs />}
-        
+
         {activeView === 'settings' && (
           <div className="space-y-6">
             <div>
@@ -306,24 +238,24 @@ export default function App() {
                         Quick Navigation
                       </h3>
                       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           className="justify-start"
                           onClick={() => setActiveView('health')}
                         >
                           <Radio className="w-4 h-4 mr-2" />
                           Node Health
                         </Button>
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           className="justify-start"
                           onClick={() => setActiveView('speaker-correction')}
                         >
                           <UserCheck className="w-4 h-4 mr-2" />
                           Speaker Learning
                         </Button>
-                        <Button 
-                          variant="outline" 
+                        <Button
+                          variant="outline"
                           className="justify-start"
                           onClick={() => setActiveView('logs')}
                         >
