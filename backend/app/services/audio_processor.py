@@ -97,7 +97,7 @@ class AudioProcessor:
     @staticmethod
     def is_speech(
         audio_data: bytes, 
-        energy_threshold: float = 500.0,
+        energy_threshold: float = 50.0,
         zero_crossing_threshold: float = 0.1
     ) -> bool:
         """
