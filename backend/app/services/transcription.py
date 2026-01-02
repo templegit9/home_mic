@@ -63,11 +63,11 @@ class TranscriptionService:
                     "-f", tmp_path,
                     "--no-timestamps",
                     "--language", "en",
-                    "--output-txt"
+                    "-t", "2"  # Use 2 threads
                 ],
                 capture_output=True,
                 text=True,
-                timeout=60  # 60 second timeout
+                timeout=180  # 3 minute timeout for CPU transcription
             )
             
             if result.returncode != 0:
