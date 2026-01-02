@@ -68,8 +68,8 @@ class ApiClient {
         this.baseUrl = baseUrl.replace(/\/$/, '');
     }
 
-    // Generic fetch helper
-    private async fetch<T>(
+    // Generic fetch helper (public for custom endpoints)
+    async fetch<T>(
         endpoint: string,
         options: RequestInit = {}
     ): Promise<T> {
