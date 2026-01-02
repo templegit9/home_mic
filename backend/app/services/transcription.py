@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 import logging
 
-from .config import WHISPER_MAIN, WHISPER_MODEL, SAMPLE_RATE
+from ..config import WHISPER_MAIN, WHISPER_MODEL, SAMPLE_RATE
 
 logger = logging.getLogger(__name__)
 
