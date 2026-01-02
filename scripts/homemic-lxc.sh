@@ -2,7 +2,7 @@
 
 # HomeMic LXC Container Setup Script for Proxmox VE
 # Inspired by tteck/Proxmox helper scripts format
-# Run from Proxmox shell: bash -c "$(wget -qLO - https://raw.githubusercontent.com/YOUR_REPO/homemic-lxc.sh)"
+# Run from Proxmox shell: bash -c "$(curl -fsSL https://raw.githubusercontent.com/templegit9/home_mic/main/scripts/homemic-lxc.sh)"
 
 set -euo pipefail
 shopt -s expand_aliases
@@ -14,7 +14,9 @@ trap die ERR
 # ============================================================================
 APP="HomeMic"
 NSAPP=$(echo ${APP,,} | tr -d ' ')
-var_disk="8"
+GITHUB_REPO="https://github.com/templegit9/home_mic.git"
+
+var_disk="16"
 var_cpu="2"
 var_ram="2048"
 var_os="ubuntu"
@@ -72,9 +74,9 @@ function check_root() {
 }
 
 function pve_check() {
-  if ! pveversion | grep -Eq "pve-manager/8\.[0-9]"; then
+  if ! pveversion | grep -Eq "pve-manager/(7|8)\.[0-9]"; then
     msg_error "This version of Proxmox VE is not supported."
-    echo -e "Requires Proxmox VE 8.0 or later."
+    echo -e "Requires Proxmox VE 7.0 or later."
     echo -e "Exiting..."
     sleep 2
     exit
@@ -150,7 +152,7 @@ function build_container() {
   local TEMPLATE_STORAGE="local"
   
   # Check if template exists, download if not
-  if ! pveam list $TEMPLATE_STORAGE | grep -q "$TEMPLATE"; then
+  if ! pveam list $TEMPLATE_STORAGE | grep -q "ubuntu-22.04"; then
     pveam update
     pveam download $TEMPLATE_STORAGE $TEMPLATE
   fi
@@ -187,6 +189,7 @@ function install_dependencies() {
     git \
     wget \
     build-essential \
+    cmake \
     ffmpeg \
     python3 \
     python3-pip \
@@ -194,8 +197,10 @@ function install_dependencies() {
     sqlite3 \
     supervisor"
   msg_ok "Installed base dependencies"
-  
-  msg_info "Installing whisper.cpp"
+}
+
+function install_whisper() {
+  msg_info "Installing whisper.cpp (this may take a few minutes)"
   pct exec $CT_ID -- bash -c "
     cd /opt
     git clone https://github.com/ggerganov/whisper.cpp.git
@@ -204,27 +209,40 @@ function install_dependencies() {
     bash ./models/download-ggml-model.sh small
   "
   msg_ok "Installed whisper.cpp with small model"
-  
-  msg_info "Creating HomeMic application directory"
+}
+
+function install_homemic() {
+  msg_info "Cloning HomeMic repository"
   pct exec $CT_ID -- bash -c "
-    mkdir -p /opt/homemic/{data,logs,config}
-    cd /opt/homemic
+    cd /opt
+    git clone ${GITHUB_REPO} homemic
+  "
+  msg_ok "Cloned HomeMic repository"
+  
+  msg_info "Creating Python virtual environment"
+  pct exec $CT_ID -- bash -c "
+    cd /opt/homemic/backend
     python3 -m venv venv
     source venv/bin/activate
-    pip install --upgrade pip
-    pip install \
-      fastapi[all] \
-      uvicorn \
-      websockets \
-      python-multipart \
-      aiofiles \
-      sqlalchemy \
-      speechbrain \
-      torchaudio \
-      numpy \
-      scipy
+    pip install --upgrade pip wheel
   "
-  msg_ok "Created HomeMic application directory"
+  msg_ok "Created Python virtual environment"
+  
+  msg_info "Installing Python dependencies (this may take several minutes)"
+  pct exec $CT_ID -- bash -c "
+    cd /opt/homemic/backend
+    source venv/bin/activate
+    pip install -r requirements.txt
+  "
+  msg_ok "Installed Python dependencies"
+  
+  msg_info "Creating data directories"
+  pct exec $CT_ID -- bash -c "
+    mkdir -p /opt/homemic/data
+    mkdir -p /opt/homemic/logs
+    mkdir -p /opt/homemic/models
+  "
+  msg_ok "Created data directories"
 }
 
 function create_service() {
@@ -237,9 +255,9 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/homemic
-Environment=PATH=/opt/homemic/venv/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/opt/homemic/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8420
+WorkingDirectory=/opt/homemic/backend
+Environment=PATH=/opt/homemic/backend/venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/opt/homemic/backend/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8420
 Restart=always
 RestartSec=5
 
@@ -247,103 +265,34 @@ RestartSec=5
 WantedBy=multi-user.target
 SERVICEEOF
 systemctl daemon-reload
+systemctl enable homemic
+systemctl start homemic
 "
-  msg_ok "Created HomeMic systemd service"
+  msg_ok "Created and started HomeMic service"
 }
 
-function create_placeholder_app() {
-  msg_info "Creating placeholder application"
-  pct exec $CT_ID -- bash -c "
-    mkdir -p /opt/homemic/app
-    cat > /opt/homemic/app/__init__.py << 'EOF'
-EOF
-
-    cat > /opt/homemic/app/main.py << 'EOF'
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime
-import asyncio
-import json
-
-app = FastAPI(
-    title=\"HomeMic API\",
-    description=\"Privacy-First Smart Microphone System\",
-    version=\"0.1.0\"
-)
-
-# CORS for React frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[\"*\"],
-    allow_credentials=True,
-    allow_methods=[\"*\"],
-    allow_headers=[\"*\"],
-)
-
-# Store active WebSocket connections
-active_connections: list[WebSocket] = []
-
-@app.get(\"/\")
-def root():
-    return {
-        \"name\": \"HomeMic\",
-        \"status\": \"running\",
-        \"version\": \"0.1.0\",
-        \"timestamp\": datetime.now().isoformat()
-    }
-
-@app.get(\"/api/status\")
-def get_status():
-    return {
-        \"uptime\": 0,
-        \"cpuUsage\": 0,
-        \"memoryUsage\": 0,
-        \"diskUsage\": 0,
-        \"transcriptionLatency\": 0,
-        \"speakerAccuracy\": 0,
-        \"activeNodes\": 0,
-        \"totalNodes\": 0,
-    }
-
-@app.get(\"/api/nodes\")
-def get_nodes():
-    return []
-
-@app.get(\"/api/speakers\")
-def get_speakers():
-    return []
-
-@app.get(\"/api/transcriptions\")
-def get_transcriptions():
-    return []
-
-@app.websocket(\"/ws\")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    active_connections.append(websocket)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            # Echo back for now - will be replaced with real transcription
-            await websocket.send_text(json.dumps({
-                \"type\": \"transcription\",
-                \"data\": {
-                    \"text\": data,
-                    \"timestamp\": datetime.now().isoformat()
-                }
-            }))
-    except WebSocketDisconnect:
-        active_connections.remove(websocket)
-
-if __name__ == \"__main__\":
-    import uvicorn
-    uvicorn.run(app, host=\"0.0.0.0\", port=8420)
-EOF
+function create_update_script() {
+  msg_info "Creating update script"
+  pct exec $CT_ID -- bash -c "cat > /opt/homemic/update.sh << 'UPDATEEOF'
+#!/bin/bash
+# HomeMic Update Script
+cd /opt/homemic
+git pull origin main
+cd backend
+source venv/bin/activate
+pip install -r requirements.txt
+systemctl restart homemic
+echo 'HomeMic updated successfully!'
+UPDATEEOF
+chmod +x /opt/homemic/update.sh
 "
-  msg_ok "Created placeholder application"
+  msg_ok "Created update script"
 }
 
 function show_completion() {
+  # Wait for service to start
+  sleep 3
+  
   local IP=$(pct exec $CT_ID -- hostname -I | awk '{print $1}')
   
   echo ""
@@ -351,20 +300,29 @@ function show_completion() {
   echo -e "${GN}               HomeMic LXC Container Created Successfully!              ${CL}"
   echo -e "${GN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CL}"
   echo ""
-  echo -e "${YW}Container ID:${CL} ${CT_ID}"
-  echo -e "${YW}Container IP:${CL} ${IP}"
-  echo -e "${YW}API URL:${CL}      http://${IP}:8420"
-  echo -e "${YW}WebSocket:${CL}    ws://${IP}:8420/ws"
+  echo -e "${YW}Container ID:${CL}   ${CT_ID}"
+  echo -e "${YW}Container IP:${CL}   ${IP}"
   echo ""
-  echo -e "${YW}Whisper.cpp:${CL}  /opt/whisper.cpp (small model)"
-  echo -e "${YW}App Dir:${CL}      /opt/homemic"
+  echo -e "${YW}API URL:${CL}        http://${IP}:8420"
+  echo -e "${YW}API Docs:${CL}       http://${IP}:8420/docs"
+  echo -e "${YW}WebSocket:${CL}      ws://${IP}:8420/ws"
   echo ""
-  echo -e "${BL}To start the service:${CL}"
-  echo -e "  pct exec ${CT_ID} -- systemctl start homemic"
-  echo -e "  pct exec ${CT_ID} -- systemctl enable homemic"
+  echo -e "${YW}Whisper.cpp:${CL}    /opt/whisper.cpp (small model)"
+  echo -e "${YW}App Directory:${CL}  /opt/homemic"
+  echo -e "${YW}Database:${CL}       /opt/homemic/data/homemic.db"
   echo ""
-  echo -e "${BL}To access the container shell:${CL}"
-  echo -e "  pct enter ${CT_ID}"
+  echo -e "${BL}Management Commands:${CL}"
+  echo -e "  pct enter ${CT_ID}                    # Access container shell"
+  echo -e "  pct exec ${CT_ID} -- systemctl status homemic  # Check service status"
+  echo -e "  pct exec ${CT_ID} -- /opt/homemic/update.sh    # Update HomeMic"
+  echo ""
+  echo -e "${BL}API Endpoints:${CL}"
+  echo -e "  GET  /api/nodes          - List microphone nodes"
+  echo -e "  GET  /api/speakers       - List enrolled speakers"
+  echo -e "  GET  /api/transcriptions - Get transcription history"
+  echo -e "  POST /api/transcriptions/ingest - Submit audio for transcription"
+  echo -e "  GET  /api/status         - System metrics"
+  echo -e "  WS   /ws                 - Real-time transcription feed"
   echo ""
   echo -e "${GN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CL}"
 }
@@ -380,6 +338,7 @@ function main() {
   
   echo ""
   echo -e "${BL}This script will create a ${APP} LXC container on Proxmox VE.${CL}"
+  echo -e "${BL}Includes: whisper.cpp, FastAPI backend, speaker identification${CL}"
   echo ""
   
   # Prompt for settings
@@ -406,8 +365,10 @@ function main() {
   
   build_container
   install_dependencies
-  create_placeholder_app
+  install_whisper
+  install_homemic
   create_service
+  create_update_script
   show_completion
 }
 
