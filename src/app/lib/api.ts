@@ -4,7 +4,7 @@
  */
 
 // Backend API URL - can be overridden via environment variable
-const API_URL = import.meta.env.VITE_API_URL || 'http://10.0.0.120:8420';
+const API_URL = import.meta.env.VITE_API_URL || 'http://35.224.111.227:8420';
 
 export interface Node {
     id: string;

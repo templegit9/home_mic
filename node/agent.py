@@ -128,7 +128,11 @@ class HomeMicAgent:
     
     def handle_audio(self, audio_data: bytes):
         """Process and send audio chunk"""
-        # Skip if muted
+        # Calculate and send audio level for real-time visualization
+        rms = AudioCapture.calculate_rms(audio_data)
+        self.client.send_audio_level(rms)
+        
+        # Skip transcription if muted
         if self.is_muted:
             return
         
@@ -136,7 +140,7 @@ class HomeMicAgent:
         if not AudioCapture.is_speech(audio_data):
             return
         
-        # Send to server
+        # Send to server for transcription
         result = self.client.send_audio(audio_data)
         
         if result.get('status') == 'transcribed':

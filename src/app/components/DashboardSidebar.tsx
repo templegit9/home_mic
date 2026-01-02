@@ -1,12 +1,13 @@
 import { Card } from './ui/card';
 import { AudioVisualization } from './AudioVisualization';
-import { useNodes, useSystemStatus, useSpeakers } from '../hooks/useApi';
+import { useNodes, useSystemStatus, useSpeakers, useAudioLevels } from '../hooks/useApi';
 import { Loader2 } from 'lucide-react';
 
 export function DashboardSidebar() {
     const { nodes, loading: nodesLoading } = useNodes();
     const { status, loading: statusLoading } = useSystemStatus();
     const { speakers } = useSpeakers();
+    const { levels: audioLevels } = useAudioLevels();
 
     // Determine which nodes are "active" based on recent last_seen
     // Backend returns UTC timestamps without 'Z' suffix, so we append it for proper parsing
@@ -43,6 +44,7 @@ export function DashboardSidebar() {
                             nodeId={node.id}
                             nodeName={node.location}
                             isActive={activeNodeIds.includes(node.id)}
+                            audioLevel={audioLevels[node.id] ?? 0}
                         />
                     ))
                 )}

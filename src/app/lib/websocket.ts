@@ -3,13 +3,14 @@
  * Real-time connection to backend for live transcription updates
  */
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://10.0.0.120:8420';
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://35.224.111.227:8420';
 
 export type WebSocketEvent =
     | { type: 'transcription'; data: TranscriptionEvent }
     | { type: 'initial_state'; transcriptions: TranscriptionEvent[] }
     | { type: 'node_status'; data: NodeStatusEvent }
     | { type: 'keyword_detected'; data: KeywordEvent }
+    | { type: 'audio_level'; data: AudioLevelEvent }
     | { type: 'connected' }
     | { type: 'disconnected' }
     | { type: 'error'; error: Error };
@@ -36,6 +37,12 @@ export interface KeywordEvent {
     keyword: string;
     transcription_id: string;
     timestamp: string;
+}
+
+export interface AudioLevelEvent {
+    node_id: string;
+    node_name: string;
+    level: number;  // 0-100 normalized level
 }
 
 type EventHandler = (event: WebSocketEvent) => void;
@@ -146,6 +153,9 @@ class WebSocketClient {
                 break;
             case 'keyword_detected':
                 this.emit({ type: 'keyword_detected', data: data.data });
+                break;
+            case 'audio_level':
+                this.emit({ type: 'audio_level', data: data.data });
                 break;
             case 'ping':
                 // Don't log pings

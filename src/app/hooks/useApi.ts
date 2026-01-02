@@ -214,3 +214,22 @@ export function useLiveTranscriptions(maxItems: number = 50) {
     return { transcriptions, isConnected };
 }
 
+export function useAudioLevels() {
+    const [levels, setLevels] = useState<Record<string, number>>({});
+    const { isConnected, lastEvent } = useWebSocket();
+
+    useEffect(() => {
+        if (!lastEvent) return;
+
+        if (lastEvent.type === 'audio_level') {
+            setLevels((prev) => ({
+                ...prev,
+                [lastEvent.data.node_id]: lastEvent.data.level
+            }));
+        }
+    }, [lastEvent]);
+
+    return { levels, isConnected };
+}
+
+

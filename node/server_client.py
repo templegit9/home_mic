@@ -119,6 +119,21 @@ class ServerClient:
             logger.error(f"Audio send error: {e}")
             return {"status": "error", "message": str(e)}
     
+    def send_audio_level(self, level: float) -> bool:
+        """Send audio level for real-time visualization on dashboard"""
+        if not self.node_id:
+            return False
+        
+        try:
+            response = self.session.post(
+                f"{self.server_url}/api/nodes/{self.node_id}/audio-level",
+                params={"level": level},
+                timeout=1  # Short timeout for real-time updates
+            )
+            return response.status_code == 200
+        except Exception:
+            return False  # Silently fail for audio level updates
+    
     def get_privacy_status(self) -> bool:
         """Check if this node is muted"""
         if not self.node_id:

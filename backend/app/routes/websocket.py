@@ -265,3 +265,19 @@ async def broadcast_system_event(event_type: str, data: Dict[str, Any]):
         "type": event_type,
         "data": data
     })
+
+
+async def broadcast_audio_level(node_id: str, node_name: str, level: float):
+    """
+    Broadcast audio level from a node to all connected dashboard clients.
+    Called frequently by Pi nodes to show real-time audio activity.
+    """
+    await manager.broadcast({
+        "type": "audio_level",
+        "data": {
+            "node_id": node_id,
+            "node_name": node_name,
+            "level": level
+        }
+    })
+

@@ -1,13 +1,15 @@
 """
 Node management routes
 """
-from fastapi import APIRouter, Depends, HTTPException
+import asyncio
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import List
 from pydantic import BaseModel
 
 from ..database import get_db, Node
+from .websocket import broadcast_audio_level
 
 router = APIRouter(prefix="/api/nodes", tags=["nodes"])
 
@@ -111,3 +113,27 @@ def node_heartbeat(node_id: str, latency: float = 0, db: Session = Depends(get_d
     
     db.commit()
     return {"status": "ok"}
+
+
+@router.post("/{node_id}/audio-level")
+async def post_audio_level(
+    node_id: str,
+    level: float = Query(..., description="RMS audio level (0-32768)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Receive audio level from a node and broadcast to dashboard clients.
+    Called frequently (~10Hz) by Pi nodes to show real-time audio activity.
+    """
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail="Node not found")
+    
+    # Normalize level to 0-100 percentage
+    normalized_level = min(100, (level / 5000) * 100)
+    
+    # Broadcast to connected dashboard clients
+    await broadcast_audio_level(node_id, node.location, normalized_level)
+    
+    return {"status": "ok"}
+

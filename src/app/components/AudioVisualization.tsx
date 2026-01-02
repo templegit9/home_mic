@@ -7,12 +7,13 @@ interface AudioVisualizationProps {
   nodeId: string;
   nodeName: string;
   isActive: boolean;
+  audioLevel?: number;  // Real audio level from WebSocket (0-100)
 }
 
-export function AudioVisualization({ nodeId, nodeName, isActive }: AudioVisualizationProps) {
+export function AudioVisualization({ nodeId, nodeName, isActive, audioLevel = 0 }: AudioVisualizationProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [volume, setVolume] = useState(0);
-  const animationFrameRef = useRef<number>();
+  const audioDataRef = useRef<number[]>(new Array(64).fill(0));
+  const animationFrameRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -25,31 +26,27 @@ export function AudioVisualization({ nodeId, nodeName, isActive }: AudioVisualiz
     canvas.width = canvas.offsetWidth;
     canvas.height = 80;
 
-    let audioData = new Array(64).fill(0);
-    let time = 0;
-
     const animate = () => {
-      time += 0.05;
+      const audioData = audioDataRef.current;
 
-      // Only animate if node is active (recently seen)
-      if (isActive) {
-        // Simulated waveform (real audio levels would come from WebSocket)
-        audioData = audioData.map((_, i) => {
-          const baseFreq = Math.sin(time + i * 0.2) * 0.3 + 0.3;
-          const noise = Math.random() * 0.2;
-          return (baseFreq + noise) * 60; // Reduced max to 60% to look less fake
-        });
-        setVolume(Math.round(Math.max(...audioData) * 0.8)); // Cap at ~50%
-      } else {
-        // Decay quickly when not active
-        audioData = audioData.map(v => v * 0.85);
-        setVolume(Math.round(Math.max(...audioData) * 0.5));
+      // Shift array left and add new audio level at the end
+      audioData.shift();
+      // Add some variance to make it look more natural
+      const variance = (Math.random() - 0.5) * 10;
+      const newLevel = Math.max(0, Math.min(100, audioLevel + variance));
+      audioData.push(isActive ? newLevel : 0);
+
+      // Decay old values when not active
+      if (!isActive) {
+        for (let i = 0; i < audioData.length; i++) {
+          audioData[i] *= 0.9;
+        }
       }
 
       // Clear canvas
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Draw waveform only if there's data
+      // Draw waveform
       const barWidth = canvas.width / audioData.length;
 
       audioData.forEach((value, i) => {
@@ -81,7 +78,7 @@ export function AudioVisualization({ nodeId, nodeName, isActive }: AudioVisualiz
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isActive]);
+  }, [isActive, audioLevel]);
 
   return (
     <Card className="p-4">
@@ -102,14 +99,14 @@ export function AudioVisualization({ nodeId, nodeName, isActive }: AudioVisualiz
         <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
           <div
             className={`h-full transition-all duration-100 ${isActive
-                ? 'bg-gradient-to-r from-blue-500 to-purple-500'
-                : 'bg-muted-foreground/30'
+              ? 'bg-gradient-to-r from-blue-500 to-purple-500'
+              : 'bg-muted-foreground/30'
               }`}
-            style={{ width: `${Math.min(volume, 100)}%` }}
+            style={{ width: `${Math.min(audioLevel, 100)}%` }}
           />
         </div>
         <span className="text-sm text-muted-foreground w-12 text-right">
-          {isActive ? `${Math.round(volume)}%` : '--'}
+          {isActive ? `${Math.round(audioLevel)}%` : '--'}
         </span>
       </div>
 
@@ -121,3 +118,4 @@ export function AudioVisualization({ nodeId, nodeName, isActive }: AudioVisualiz
     </Card>
   );
 }
+
