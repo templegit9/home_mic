@@ -10,7 +10,7 @@ DATA_DIR = BASE_DIR / "data"
 LOGS_DIR = BASE_DIR / "logs"
 WHISPER_DIR = Path("/opt/whisper.cpp")
 WHISPER_MODEL = WHISPER_DIR / "models" / "ggml-small.bin"
-WHISPER_MAIN = WHISPER_DIR / "main"
+WHISPER_MAIN = WHISPER_DIR / "build" / "bin" / "main"
 
 # Database
 DATABASE_URL = f"sqlite:///{DATA_DIR}/homemic.db"
