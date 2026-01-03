@@ -3,10 +3,20 @@
 # HomeMic LXC Setup Script for Proxmox
 # Run this on your Proxmox host to create a fresh LXC container with all dependencies
 #
-# Usage: bash setup-lxc.sh
+# Usage: bash setup-lxc.sh [-y]
+#   -y  Skip confirmation prompts (auto-yes)
 #
 
 set -e
+
+# Parse arguments
+AUTO_YES=false
+while getopts "y" opt; do
+    case $opt in
+        y) AUTO_YES=true ;;
+        *) echo "Usage: $0 [-y]"; exit 1 ;;
+    esac
+done
 
 # Configuration
 CTID=113
@@ -32,7 +42,11 @@ fi
 if pct status $CTID &>/dev/null; then
     echo ""
     echo "Container $CTID ($CT_NAME) exists."
-    read -p "Delete and recreate? (y/N): " confirm
+    if [ "$AUTO_YES" = true ]; then
+        confirm="y"
+    else
+        read -p "Delete and recreate? (y/N): " confirm
+    fi
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         echo "Stopping container..."
         pct stop $CTID --force 2>/dev/null || true
