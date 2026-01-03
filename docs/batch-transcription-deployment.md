@@ -1,62 +1,121 @@
 # Batch Transcription Deployment Guide
 
-Deploy the batch transcription feature to your Proxmox server and Raspberry Pi nodes.
+Deploy the batch transcription feature to your Proxmox LXC container and Raspberry Pi nodes.
 
 ---
 
 ## Prerequisites
 
-- Proxmox server running (or GCP e2-medium)
+- Proxmox LXC container 113 (homemic) running
 - Raspberry Pi 5 with USB microphone
 - External storage mounted (for audio files)
 - Git access to the repository
 
 ---
 
-## 1. Server Deployment (Proxmox/GCP)
+## 1. Backend Deployment (Proxmox LXC Container 113)
 
-### Pull the Latest Code
+### LXC Container Specs
+- **Container ID**: 113 (homemic)
+- **OS**: Ubuntu
+- **CPU**: 2 cores
+- **RAM**: 2 GB
+- **Disk**: 15.58 GB
+
+### SSH into the LXC Container
 
 ```bash
-ssh user@your-server
+# Option 1: SSH directly (if network is configured)
+ssh root@<LXC_IP_ADDRESS>
+
+# Option 2: Via Proxmox host
+ssh root@<PROXMOX_HOST_IP>
+pct enter 113
+
+# Option 3: Via Proxmox Web Console
+# Go to Proxmox UI → Container 113 → Console
+```
+
+> **Find LXC IP**: In Proxmox UI, click Container 113 → Network, or run `pct exec 113 -- ip addr`
+
+### First-Time Setup (if not already done)
+
+```bash
+# Update system
+apt update && apt upgrade -y
+
+# Install dependencies
+apt install -y python3 python3-pip python3-venv git ffmpeg
+
+# Clone repository
+mkdir -p /opt
+cd /opt
+git clone https://github.com/templegit9/home_mic.git homemic
+cd homemic
+
+# Create virtual environment
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Create data directories
+mkdir -p /opt/homemic/data/audio
+```
+
+### Pull Latest Code
+
+```bash
 cd /opt/homemic
+
+# Stash any local changes
+git stash
+
+# Pull batch-transcription branch
 git fetch origin
 git checkout feature/batch-transcription
 git pull origin feature/batch-transcription
+
+# Update dependencies
+cd backend
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-### Configure External Storage (Optional)
-
-If using external storage for audio files:
+### Create Systemd Service
 
 ```bash
-# Mount external drive (example: /mnt/audio-storage)
-sudo mkdir -p /mnt/audio-storage
-sudo mount /dev/sdb1 /mnt/audio-storage
+cat > /etc/systemd/system/homemic.service << 'EOF'
+[Unit]
+Description=HomeMic Backend Server
+After=network.target
 
-# Set environment variable
-echo 'HOMEMIC_AUDIO_STORAGE=/mnt/audio-storage/homemic' | sudo tee -a /etc/environment
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/homemic/backend
+Environment="PATH=/opt/homemic/backend/venv/bin"
+ExecStart=/opt/homemic/backend/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8420
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable homemic
+systemctl start homemic
 ```
 
-### Install/Update Dependencies
+### Verify Backend is Running
 
 ```bash
-cd /opt/homemic/backend
-pip3 install -r requirements.txt
-```
-
-### Migrate Database
-
-The new `batch_clips` and `transcript_segments` tables will be created automatically on first startup.
-
-### Restart Backend Service
-
-```bash
-sudo systemctl restart homemic
-sudo systemctl status homemic
-
-# Check logs
+systemctl status homemic
 journalctl -u homemic -f
+
+# Test API
+curl http://localhost:8420/
 ```
 
 ---
