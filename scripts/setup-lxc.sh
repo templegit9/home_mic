@@ -42,12 +42,9 @@ fi
 if pct status $CTID &>/dev/null; then
     echo ""
     echo "Container $CTID ($CT_NAME) exists."
-    if [ "$AUTO_YES" = true ]; then
-        confirm="y"
-    else
-        read -p "Delete and recreate? (y/N): " confirm
-    fi
-    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+    
+    if [ "$AUTO_YES" = "true" ]; then
+        echo "Auto-confirming deletion (-y flag)..."
         echo "Stopping container..."
         pct stop $CTID --force 2>/dev/null || true
         sleep 2
@@ -55,8 +52,18 @@ if pct status $CTID &>/dev/null; then
         pct destroy $CTID --force
         echo "Container $CTID deleted."
     else
-        echo "Aborted."
-        exit 0
+        read -p "Delete and recreate? (y/N): " confirm
+        if [[ "$confirm" =~ ^[Yy]$ ]]; then
+            echo "Stopping container..."
+            pct stop $CTID --force 2>/dev/null || true
+            sleep 2
+            echo "Destroying container..."
+            pct destroy $CTID --force
+            echo "Container $CTID deleted."
+        else
+            echo "Aborted."
+            exit 0
+        fi
     fi
 fi
 
