@@ -31,7 +31,7 @@ class AudioCapture:
         self,
         sample_rate: int = SAMPLE_RATE,
         channels: int = CHANNELS,
-        chunk_duration: float = CHUNK_DURATION,
+        chunk_duration: float = 0.5,  # Default 0.5s chunks (legacy, not used in batch mode)
         device_index: Optional[int] = None
     ):
         self.sample_rate = sample_rate
