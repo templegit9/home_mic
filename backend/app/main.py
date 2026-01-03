@@ -68,6 +68,7 @@ from .routes import (
     websocket_router,
     system_router,
     batch_router,
+    control_router,
 )
 
 app.include_router(nodes_router)
@@ -77,6 +78,7 @@ app.include_router(keywords_privacy_router)
 app.include_router(websocket_router)
 app.include_router(system_router)
 app.include_router(batch_router)
+app.include_router(control_router)
 
 
 @app.get("/")

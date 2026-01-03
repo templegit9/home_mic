@@ -15,6 +15,7 @@ import { SystemLogs } from './components/SystemLogs';
 import { BackupRestore } from './components/BackupRestore';
 import { ConversationContext } from './components/ConversationContext';
 import BatchClipViewer from './components/BatchClipViewer';
+import { SystemControlPanel } from './components/SystemControlPanel';
 import { Button } from './components/ui/button';
 import { Card } from './components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
@@ -39,6 +40,7 @@ type View =
   | 'analytics'
   | 'health'
   | 'logs'
+  | 'control'
   | 'settings';
 
 export default function App() {
@@ -193,7 +195,10 @@ export default function App() {
             <div className="grid gap-6 lg:grid-cols-2">
               <BatchClipViewer />
 
-              <DashboardSidebar />
+              <div className="space-y-6">
+                <DashboardSidebar />
+                <SystemControlPanel />
+              </div>
             </div>
           </div>
         )}
