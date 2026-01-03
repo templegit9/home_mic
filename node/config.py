@@ -10,7 +10,7 @@ NODE_NAME = os.environ.get("HOMEMIC_NODE_NAME", "Living Room")
 NODE_LOCATION = os.environ.get("HOMEMIC_LOCATION", "Living Room")
 
 # Audio Configuration
-SAMPLE_RATE = 16000  # Whisper requires 16kHz
+SAMPLE_RATE = 48000  # USB mic native rate (server will resample to 16kHz for Whisper)
 CHANNELS = 1  # Mono
 SILENCE_THRESHOLD = 500  # RMS threshold for silence detection
 
