@@ -191,7 +191,7 @@ export default function App() {
             <SystemStatus />
 
             <div className="grid gap-6 lg:grid-cols-2">
-              <TranscriptionFeed />
+              <BatchClipViewer />
 
               <DashboardSidebar />
             </div>

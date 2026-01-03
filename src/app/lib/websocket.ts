@@ -3,7 +3,7 @@
  * Real-time connection to backend for live transcription updates
  */
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://35.224.111.227:8420';
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://10.0.0.135:8420';
 
 export type WebSocketEvent =
     | { type: 'transcription'; data: TranscriptionEvent }
