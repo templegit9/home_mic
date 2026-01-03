@@ -292,7 +292,7 @@ async def update_node():
     
     # SSH command to update and restart node
     ssh_command = [
-        "ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10",
+        "/usr/bin/ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10",
         f"{username}@{hostname}",
         "cd ~/homemic-node && git pull origin feature/batch-transcription && sudo systemctl restart homemic-node"
     ]
@@ -339,7 +339,7 @@ async def restart_node():
     username = NODE_SSH_CONFIG["username"]
     
     ssh_command = [
-        "ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10",
+        "/usr/bin/ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10",
         f"{username}@{hostname}",
         "sudo systemctl restart homemic-node"
     ]
