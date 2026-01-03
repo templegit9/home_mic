@@ -209,3 +209,165 @@ async def ping_node(node_id: str):
         
     finally:
         db.close()
+
+
+# Node configuration for SSH access
+# In production, use environment variables or secure storage
+NODE_SSH_CONFIG = {
+    "hostname": os.environ.get("NODE_SSH_HOST", "homemic-node.local"),
+    "username": os.environ.get("NODE_SSH_USER", "homemic-node"),
+    # Password-based or key-based auth - configure as needed
+}
+
+
+@router.post("/backend/update")
+async def update_backend():
+    """Pull latest code and restart backend service"""
+    import subprocess
+    
+    logger.info("Backend update requested from dashboard")
+    
+    try:
+        # Git pull
+        result = subprocess.run(
+            ["git", "pull", "origin", "feature/batch-transcription"],
+            cwd="/opt/homemic",
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        git_output = result.stdout + result.stderr
+        logger.info(f"Git pull: {git_output}")
+        
+        if result.returncode != 0:
+            return {
+                "success": False,
+                "action": "git_pull",
+                "error": git_output
+            }
+        
+        # Schedule restart (happens after response is sent)
+        asyncio.create_task(restart_backend_service())
+        
+        return {
+            "success": True,
+            "action": "update_and_restart",
+            "message": "Update pulled, restarting backend...",
+            "git_output": git_output.strip()
+        }
+        
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "Git pull timed out"}
+    except Exception as e:
+        logger.error(f"Backend update failed: {e}")
+        return {"success": False, "error": str(e)}
+
+
+async def restart_backend_service():
+    """Restart the backend service after a brief delay"""
+    import subprocess
+    
+    await asyncio.sleep(1)  # Let response complete
+    logger.info("Restarting homemic service...")
+    
+    try:
+        subprocess.run(
+            ["systemctl", "restart", "homemic"],
+            timeout=10
+        )
+    except Exception as e:
+        logger.error(f"Service restart failed: {e}")
+
+
+@router.post("/node/update")
+async def update_node():
+    """SSH to node and pull updates + restart service"""
+    import subprocess
+    
+    logger.info("Node update requested from dashboard")
+    
+    hostname = NODE_SSH_CONFIG["hostname"]
+    username = NODE_SSH_CONFIG["username"]
+    
+    # SSH command to update and restart node
+    ssh_command = [
+        "ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10",
+        f"{username}@{hostname}",
+        "cd ~/homemic-node && git pull origin feature/batch-transcription && sudo systemctl restart homemic-node"
+    ]
+    
+    try:
+        result = subprocess.run(
+            ssh_command,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        output = result.stdout + result.stderr
+        logger.info(f"Node update result: {output}")
+        
+        if result.returncode == 0:
+            return {
+                "success": True,
+                "action": "node_update_restart",
+                "message": "Node updated and restarted",
+                "output": output.strip()
+            }
+        else:
+            return {
+                "success": False,
+                "error": output.strip() or "SSH command failed"
+            }
+            
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "SSH connection timed out"}
+    except Exception as e:
+        logger.error(f"Node update failed: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@router.post("/node/restart")
+async def restart_node():
+    """SSH to node and restart the service only (no git pull)"""
+    import subprocess
+    
+    logger.info("Node restart requested from dashboard")
+    
+    hostname = NODE_SSH_CONFIG["hostname"]
+    username = NODE_SSH_CONFIG["username"]
+    
+    ssh_command = [
+        "ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10",
+        f"{username}@{hostname}",
+        "sudo systemctl restart homemic-node"
+    ]
+    
+    try:
+        result = subprocess.run(
+            ssh_command,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        
+        if result.returncode == 0:
+            logger.info("Node restart successful")
+            return {
+                "success": True,
+                "action": "node_restart",
+                "message": "Node service restarted"
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.stderr.strip() or "Restart failed"
+            }
+            
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "SSH connection timed out"}
+    except Exception as e:
+        logger.error(f"Node restart failed: {e}")
+        return {"success": False, "error": str(e)}
+

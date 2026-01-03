@@ -67,6 +67,75 @@ export function SystemControlPanel() {
         }
     }, []);
 
+    // Restart states
+    const [backendUpdating, setBackendUpdating] = useState(false);
+    const [nodeUpdating, setNodeUpdating] = useState(false);
+    const [lastAction, setLastAction] = useState<string | null>(null);
+
+    // Update and restart backend
+    const updateBackend = async () => {
+        setBackendUpdating(true);
+        setLastAction(null);
+        try {
+            const res = await fetch(`${API_URL}/api/control/backend/update`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                setLastAction('Backend updating... page will refresh shortly');
+                // Backend will restart, wait then refresh
+                setTimeout(() => {
+                    window.location.reload();
+                }, 3000);
+            } else {
+                setLastAction(`Backend update failed: ${data.error}`);
+            }
+        } catch (err) {
+            setLastAction(`Backend update error: ${err}`);
+        } finally {
+            setBackendUpdating(false);
+        }
+    };
+
+    // Update and restart node
+    const updateNode = async () => {
+        setNodeUpdating(true);
+        setLastAction(null);
+        try {
+            const res = await fetch(`${API_URL}/api/control/node/update`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                setLastAction('Node updated and restarted successfully');
+                // Refresh health after a moment
+                setTimeout(checkHealth, 2000);
+            } else {
+                setLastAction(`Node update failed: ${data.error}`);
+            }
+        } catch (err) {
+            setLastAction(`Node update error: ${err}`);
+        } finally {
+            setNodeUpdating(false);
+        }
+    };
+
+    // Restart node only (no git pull)
+    const restartNode = async () => {
+        setNodeUpdating(true);
+        setLastAction(null);
+        try {
+            const res = await fetch(`${API_URL}/api/control/node/restart`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                setLastAction('Node restarted successfully');
+                setTimeout(checkHealth, 2000);
+            } else {
+                setLastAction(`Node restart failed: ${data.error}`);
+            }
+        } catch (err) {
+            setLastAction(`Node restart error: ${err}`);
+        } finally {
+            setNodeUpdating(false);
+        }
+    };
+
     // Start log streaming
     const startLogStream = useCallback(() => {
         if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -257,6 +326,44 @@ export function SystemControlPanel() {
                                     {getStatusBadge(node.status)}
                                 </div>
                             ))
+                        )}
+
+                        {/* Action Buttons */}
+                        <div className="flex flex-wrap gap-2 pt-2 border-t">
+                            <Button
+                                variant="default"
+                                size="sm"
+                                onClick={updateBackend}
+                                disabled={backendUpdating || nodeUpdating}
+                            >
+                                <RefreshCw className={`w-4 h-4 mr-1 ${backendUpdating ? 'animate-spin' : ''}`} />
+                                Update Backend
+                            </Button>
+                            <Button
+                                variant="default"
+                                size="sm"
+                                onClick={updateNode}
+                                disabled={backendUpdating || nodeUpdating}
+                            >
+                                <RefreshCw className={`w-4 h-4 mr-1 ${nodeUpdating ? 'animate-spin' : ''}`} />
+                                Update Node
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={restartNode}
+                                disabled={backendUpdating || nodeUpdating}
+                            >
+                                <Radio className="w-4 h-4 mr-1" />
+                                Restart Node
+                            </Button>
+                        </div>
+
+                        {/* Action Status */}
+                        {lastAction && (
+                            <p className={`text-sm ${lastAction.includes('failed') || lastAction.includes('error') ? 'text-red-500' : 'text-green-500'}`}>
+                                {lastAction}
+                            </p>
                         )}
                     </div>
                 ) : (
