@@ -204,6 +204,8 @@ class HomeMicAgent:
                         f"Uploaded: {self.uploader.clips_uploaded}, "
                         f"Pending: {pending}"
                     )
+                    # Clean up uploaded files to free local disk space
+                    self.uploader.cleanup_uploaded(keep_days=0)
                 
                 time.sleep(1)
                 
