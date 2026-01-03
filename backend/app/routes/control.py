@@ -214,7 +214,7 @@ async def ping_node(node_id: str):
 # Node configuration for SSH access
 # In production, use environment variables or secure storage
 NODE_SSH_CONFIG = {
-    "hostname": os.environ.get("NODE_SSH_HOST", "homemic-node.local"),
+    "hostname": os.environ.get("NODE_SSH_HOST", "10.0.0.28"),
     "username": os.environ.get("NODE_SSH_USER", "homemic-node"),
     # Password-based or key-based auth - configure as needed
 }
