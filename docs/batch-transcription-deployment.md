@@ -74,9 +74,17 @@ ssh homemic-node@homemic-node.local
 
 ```bash
 cd ~/homemic-node
+
+# Stash any local changes (config customizations etc.)
+git stash
+
+# Pull latest changes
 git fetch origin
 git checkout feature/batch-transcription
 git pull origin feature/batch-transcription
+
+# Optionally restore local config changes
+# git stash pop
 ```
 
 ### Install Dependencies
