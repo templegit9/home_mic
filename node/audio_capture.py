@@ -5,6 +5,7 @@ Records 10-minute batch clips for server transcription
 """
 import pyaudio
 import numpy as np
+import time
 import threading
 import queue
 import wave
@@ -331,14 +332,46 @@ class BatchRecorder:
                 level_check_interval = self.sample_rate  # Check level every second
                 frames_since_level_check = 0
                 level_samples = []
+                consecutive_errors = 0
+                max_consecutive_errors = 10  # Restart stream if too many errors
                 
                 try:
                     while self.is_running and frames_recorded < self.frames_per_batch:
                         # Read audio chunk
                         try:
                             data = self.stream.read(1024, exception_on_overflow=False)
+                            consecutive_errors = 0  # Reset on success
                         except Exception as e:
-                            logger.warning(f"Audio read error: {e}")
+                            consecutive_errors += 1
+                            logger.warning(f"Audio read error ({consecutive_errors}): {e}")
+                            
+                            if consecutive_errors >= max_consecutive_errors:
+                                logger.error("Too many consecutive errors, restarting audio stream")
+                                # Try to recover the stream
+                                try:
+                                    self.stream.stop_stream()
+                                    self.stream.close()
+                                    self.stream = self.pa.open(
+                                        format=pyaudio.paInt16,
+                                        channels=self.channels,
+                                        rate=self.sample_rate,
+                                        input=True,
+                                        input_device_index=self.device_index,
+                                        frames_per_buffer=1024
+                                    )
+                                    consecutive_errors = 0
+                                    logger.info("Audio stream restarted successfully")
+                                except Exception as restart_error:
+                                    logger.error(f"Failed to restart stream: {restart_error}")
+                                    raise  # Give up on this clip
+                            
+                            time.sleep(0.1)  # Brief delay before retry
+                            continue
+                        
+                        # Check if we got valid data
+                        if not data or len(data) == 0:
+                            consecutive_errors += 1
+                            logger.warning(f"Empty audio data received ({consecutive_errors})")
                             continue
                         
                         # Write to file
