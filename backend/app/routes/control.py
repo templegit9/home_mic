@@ -230,7 +230,7 @@ async def update_backend():
     try:
         # Git pull
         result = subprocess.run(
-            ["git", "pull", "origin", "feature/batch-transcription"],
+            ["/usr/bin/git", "pull", "origin", "feature/batch-transcription"],
             cwd="/opt/homemic",
             capture_output=True,
             text=True,
@@ -273,7 +273,7 @@ async def restart_backend_service():
     
     try:
         subprocess.run(
-            ["systemctl", "restart", "homemic"],
+            ["/usr/bin/systemctl", "restart", "homemic"],
             timeout=10
         )
     except Exception as e:
