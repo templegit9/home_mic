@@ -66,8 +66,8 @@ journalctl -u homemic -f
 ### SSH to Each Node
 
 ```bash
-ssh pi@homemic-node.local
-# or use IP: ssh pi@10.0.0.XXX
+ssh homemic-node@homemic-node.local
+# or use IP: ssh homemic-node@10.0.0.XXX
 ```
 
 ### Update Node Code
