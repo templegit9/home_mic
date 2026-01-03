@@ -12,9 +12,20 @@ NODE_LOCATION = os.environ.get("HOMEMIC_LOCATION", "Living Room")
 # Audio Configuration
 SAMPLE_RATE = 16000  # Whisper requires 16kHz
 CHANNELS = 1  # Mono
-CHUNK_DURATION = 3.0  # Seconds per chunk to send
 SILENCE_THRESHOLD = 500  # RMS threshold for silence detection
-MIN_SPEECH_DURATION = 0.5  # Minimum seconds of speech to trigger send
+
+# Batch Recording Configuration (replaces real-time streaming)
+BATCH_DURATION = 600  # 10 minutes in seconds
+BATCH_OVERLAP = 0  # Seconds of overlap between clips (0 = no overlap)
+MIN_AUDIO_LEVEL = 100  # Minimum RMS to consider as non-silence
+
+# Local Storage for batch clips
+LOCAL_STORAGE_DIR = os.environ.get(
+    "HOMEMIC_STORAGE_DIR",
+    os.path.expanduser("~/.homemic/clips")
+)
+UPLOAD_RETRY_COUNT = 3
+UPLOAD_RETRY_DELAY = 10  # Seconds between retries
 
 # VAD Configuration
 VAD_AGGRESSIVENESS = 2  # 0-3, higher = more aggressive filtering
@@ -28,3 +39,4 @@ MAX_RETRIES = 3
 DATA_DIR = os.path.expanduser("~/.homemic")
 LOG_FILE = os.path.join(DATA_DIR, "node.log")
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
+

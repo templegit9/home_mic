@@ -26,20 +26,26 @@ export function AudioVisualization({ nodeId, nodeName, isActive, audioLevel = 0 
     canvas.width = canvas.offsetWidth;
     canvas.height = 80;
 
+    let frameCount = 0;
+
     const animate = () => {
+      frameCount++;
       const audioData = audioDataRef.current;
 
-      // Shift array left and add new audio level at the end
-      audioData.shift();
-      // Add some variance to make it look more natural
-      const variance = (Math.random() - 0.5) * 10;
-      const newLevel = Math.max(0, Math.min(100, audioLevel + variance));
-      audioData.push(isActive ? newLevel : 0);
+      // Only update data every 3rd frame (slower animation)
+      if (frameCount % 3 === 0) {
+        // Shift array left and add new audio level at the end
+        audioData.shift();
+        // Add some variance to make it look more natural
+        const variance = (Math.random() - 0.5) * 10;
+        const newLevel = Math.max(0, Math.min(100, audioLevel + variance));
+        audioData.push(isActive ? newLevel : 0);
 
-      // Decay old values when not active
-      if (!isActive) {
-        for (let i = 0; i < audioData.length; i++) {
-          audioData[i] *= 0.9;
+        // Decay old values when not active
+        if (!isActive) {
+          for (let i = 0; i < audioData.length; i++) {
+            audioData[i] *= 0.9;
+          }
         }
       }
 

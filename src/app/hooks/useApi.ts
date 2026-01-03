@@ -232,4 +232,86 @@ export function useAudioLevels() {
     return { levels, isConnected };
 }
 
+// ============ BATCH CLIP HOOKS ============
 
+export function useBatchClips(params?: {
+    nodeId?: string;
+    status?: string;
+    limit?: number;
+}) {
+    const [clips, setClips] = useState<import('../lib/api').BatchClip[]>([]);
+    const [total, setTotal] = useState(0);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<Error | null>(null);
+    const [offset, setOffset] = useState(0);
+
+    const refresh = useCallback(async () => {
+        try {
+            setLoading(true);
+            const data = await api.getBatchHistory({
+                node_id: params?.nodeId,
+                status: params?.status,
+                limit: params?.limit || 20,
+                offset,
+            });
+            setClips(data.clips);
+            setTotal(data.total);
+            setError(null);
+        } catch (e) {
+            setError(e as Error);
+        } finally {
+            setLoading(false);
+        }
+    }, [params?.nodeId, params?.status, params?.limit, offset]);
+
+    useEffect(() => {
+        refresh();
+        // Refresh every 30 seconds
+        const interval = setInterval(refresh, 30000);
+        return () => clearInterval(interval);
+    }, [refresh]);
+
+    const nextPage = useCallback(() => {
+        if (offset + (params?.limit || 20) < total) {
+            setOffset((prev) => prev + (params?.limit || 20));
+        }
+    }, [offset, total, params?.limit]);
+
+    const prevPage = useCallback(() => {
+        setOffset((prev) => Math.max(0, prev - (params?.limit || 20)));
+    }, [params?.limit]);
+
+    return { clips, total, loading, error, refresh, offset, nextPage, prevPage };
+}
+
+export function useBatchClipDetails(clipId: string | null) {
+    const [clip, setClip] = useState<import('../lib/api').BatchClipDetails | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<Error | null>(null);
+
+    const refresh = useCallback(async () => {
+        if (!clipId) {
+            setClip(null);
+            return;
+        }
+
+        try {
+            setLoading(true);
+            const data = await api.getBatchClipDetails(clipId);
+            setClip(data);
+            setError(null);
+        } catch (e) {
+            setError(e as Error);
+        } finally {
+            setLoading(false);
+        }
+    }, [clipId]);
+
+    useEffect(() => {
+        refresh();
+    }, [refresh]);
+
+    const audioUrl = clipId ? api.getClipAudioUrl(clipId) : null;
+
+    return { clip, loading, error, refresh, audioUrl };
+}

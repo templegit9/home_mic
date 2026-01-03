@@ -1,0 +1,19 @@
+[Unit]
+Description=HomeMic Node Agent
+After=network.target sound.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=homemic-node
+WorkingDirectory=/home/homemic-node/homemic-node/node
+ExecStart=/home/homemic-node/homemic-node/node/venv/bin/python /home/homemic-node/homemic-node/node/agent.py
+Restart=always
+RestartSec=5
+Environment=HOMEMIC_SERVER=http://35.224.111.227:8420
+
+# Give time for audio device to be ready
+ExecStartPre=/bin/sleep 3
+
+[Install]
+WantedBy=multi-user.target

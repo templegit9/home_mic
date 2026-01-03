@@ -154,6 +154,70 @@ class TranscriptionService:
             logger.error(f"File transcription error: {e}")
             return "", 0.0
     
+    def transcribe_file_with_timestamps(self, file_path: Path) -> Tuple[str, list]:
+        """
+        Transcribe an audio file with segment-level timestamps.
+        Used for batch processing 10-minute clips.
+        
+        Args:
+            file_path: Path to WAV file
+        
+        Returns:
+            Tuple of (full_text, segments_list)
+            where segments_list contains dicts with {start, end, text, confidence}
+        """
+        if not file_path.exists():
+            raise FileNotFoundError(f"Audio file not found: {file_path}")
+        
+        try:
+            model = get_whisper_model()
+            
+            # Transcribe with word-level timestamps
+            segments_iter, info = model.transcribe(
+                str(file_path),
+                language="en",
+                beam_size=5,
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=500),
+                word_timestamps=True  # Enable word-level timestamps
+            )
+            
+            full_text_parts = []
+            segment_list = []
+            
+            for segment in segments_iter:
+                text = segment.text.strip()
+                if not text:
+                    continue
+                
+                cleaned_text = self._clean_transcription(text)
+                if not cleaned_text:
+                    continue
+                
+                full_text_parts.append(cleaned_text)
+                
+                # Calculate confidence from logprob
+                confidence = 0.8  # Default
+                if segment.avg_logprob:
+                    confidence = min(1.0, max(0.0, 1.0 + segment.avg_logprob / 5.0))
+                
+                segment_list.append({
+                    'start': segment.start,
+                    'end': segment.end,
+                    'text': cleaned_text,
+                    'confidence': confidence
+                })
+            
+            full_text = " ".join(full_text_parts)
+            
+            logger.info(f"Transcribed {file_path.name}: {len(segment_list)} segments, {len(full_text)} chars")
+            
+            return full_text, segment_list
+            
+        except Exception as e:
+            logger.error(f"File transcription with timestamps error: {e}")
+            return "", []
+    
     def _clean_transcription(self, text: str) -> str:
         """Clean up common whisper artifacts"""
         if not text:

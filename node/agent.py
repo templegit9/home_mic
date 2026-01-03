@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-HomeMic Node Agent
-Captures audio from USB microphone and sends to HomeMic server for transcription.
+HomeMic Node Agent - Batch Mode
+Continuously records 10-minute audio clips and uploads them to server for transcription.
 
 Usage:
     python agent.py [--server URL] [--name NAME] [--location LOCATION]
@@ -17,10 +17,16 @@ from pathlib import Path
 
 from config import (
     SERVER_URL, NODE_NAME, NODE_LOCATION,
-    HEARTBEAT_INTERVAL, DATA_DIR, CONFIG_FILE, LOG_FILE
+    HEARTBEAT_INTERVAL, DATA_DIR, CONFIG_FILE, LOG_FILE,
+    LOCAL_STORAGE_DIR, BATCH_DURATION
 )
-from audio_capture import AudioCapture
+from audio_capture import AudioCapture, BatchRecorder
 from server_client import ServerClient
+from batch_uploader import BatchUploader
+
+# Ensure directories exist
+Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
+Path(LOCAL_STORAGE_DIR).mkdir(parents=True, exist_ok=True)
 
 # Setup logging
 logging.basicConfig(
@@ -35,7 +41,10 @@ logger = logging.getLogger(__name__)
 
 
 class HomeMicAgent:
-    """Main node agent that coordinates audio capture and server communication"""
+    """
+    Batch recording node agent.
+    Records 10-minute clips and uploads them to server for transcription.
+    """
     
     def __init__(
         self,
@@ -48,19 +57,15 @@ class HomeMicAgent:
         self.node_location = node_location
         
         # Components
-        self.audio = AudioCapture()
         self.client = ServerClient(server_url)
+        self.recorder = BatchRecorder()
+        self.uploader = BatchUploader(server_url=server_url)
         
         # State
         self.is_running = False
         self.is_muted = False
         self.last_heartbeat = 0
-        self.chunks_sent = 0
-        self.transcriptions_received = 0
         
-        # Ensure data directory exists
-        Path(DATA_DIR).mkdir(parents=True, exist_ok=True)
-    
     def load_config(self):
         """Load saved configuration (node ID, etc.)"""
         if os.path.exists(CONFIG_FILE):
@@ -126,75 +131,82 @@ class HomeMicAgent:
             if self.is_muted:
                 logger.info("Node is currently muted")
     
-    def handle_audio(self, audio_data: bytes):
-        """Process and send audio chunk"""
-        # Calculate and send audio level for real-time visualization
-        rms = AudioCapture.calculate_rms(audio_data)
+    def handle_audio_level(self, rms: float):
+        """Send audio level for real-time visualization"""
         self.client.send_audio_level(rms)
-        
-        # Skip transcription if muted
-        if self.is_muted:
-            return
-        
-        # Check for speech using simple VAD
-        if not AudioCapture.is_speech(audio_data):
-            return
-        
-        # Send to server for transcription
-        result = self.client.send_audio(audio_data)
-        
-        if result.get('status') == 'transcribed':
-            self.chunks_sent += 1
-            self.transcriptions_received += 1
-            
-            text = result.get('text', '')
-            speaker = result.get('speaker_name', 'Unknown')
-            
-            logger.info(f"[{speaker}]: {text}")
-            
-            # Check for detected keywords
-            keywords = result.get('keywords_detected', [])
-            if keywords:
-                logger.warning(f"Keywords detected: {keywords}")
-        
-        elif result.get('status') == 'no_speech':
-            pass  # Expected when VAD on server rejects
-        elif result.get('status') == 'empty':
-            pass  # No transcription result
+    
+    def handle_clip_complete(self, clip_path: str):
+        """Called when a new clip is finished recording"""
+        logger.info(f"New clip ready for upload: {clip_path}")
+        # Uploader will automatically pick it up from storage directory
+    
+    def handle_upload_complete(self, filename: str, result: dict):
+        """Called when upload succeeds"""
+        status = result.get('status', 'unknown')
+        if status == 'transcribed':
+            text = result.get('text', '')[:100]  # First 100 chars
+            logger.info(f"Transcribed [{filename}]: {text}...")
+        elif status == 'processing':
+            logger.info(f"Server processing: {filename}")
         else:
-            logger.warning(f"Unexpected result: {result}")
+            logger.info(f"Upload complete: {filename} (status: {status})")
     
     def run(self):
         """Main run loop"""
-        logger.info(f"HomeMic Node Agent starting...")
+        logger.info("=" * 60)
+        logger.info("HomeMic Node Agent (Batch Mode)")
+        logger.info("=" * 60)
         logger.info(f"Server: {self.server_url}")
         logger.info(f"Node: {self.node_name} ({self.node_location})")
+        logger.info(f"Clip duration: {BATCH_DURATION} seconds ({BATCH_DURATION//60} minutes)")
+        logger.info(f"Storage: {LOCAL_STORAGE_DIR}")
         
         # Load saved config
         self.load_config()
         
         # Register with server
         if not self.register():
-            logger.error("Failed to register with server. Exiting.")
-            return
+            logger.error("Failed to register with server. Will retry in offline mode.")
+            # Continue anyway - uploader will queue clips
+        else:
+            logger.info(f"Registered with node ID: {self.client.node_id}")
         
-        logger.info(f"Registered with node ID: {self.client.node_id}")
+        # Setup callbacks
+        self.recorder.on_audio_level = self.handle_audio_level
+        self.recorder.on_clip_complete = self.handle_clip_complete
+        self.uploader.on_upload_complete = self.handle_upload_complete
         
-        # Start audio capture
+        # Start uploader (will watch for clips)
+        if self.client.node_id:
+            self.uploader.start(self.client.node_id)
+        
+        # Start recorder
         try:
-            self.audio.start(callback=self.handle_audio)
+            self.recorder.start()
         except Exception as e:
-            logger.error(f"Failed to start audio capture: {e}")
+            logger.error(f"Failed to start audio recording: {e}")
             return
         
         self.is_running = True
-        logger.info("Agent running. Press Ctrl+C to stop.")
+        logger.info("Agent running. Recording will save to local storage.")
+        logger.info("Press Ctrl+C to stop.")
         
         # Main loop
         try:
             while self.is_running:
                 self.send_heartbeat()
+                
+                # Log status periodically
+                if int(time.time()) % 60 == 0:
+                    pending = self.uploader.get_pending_count()
+                    logger.info(
+                        f"Status: Clips recorded: {self.recorder.clips_recorded}, "
+                        f"Uploaded: {self.uploader.clips_uploaded}, "
+                        f"Pending: {pending}"
+                    )
+                
                 time.sleep(1)
+                
         except KeyboardInterrupt:
             logger.info("Interrupted by user")
         finally:
@@ -203,12 +215,21 @@ class HomeMicAgent:
     def stop(self):
         """Stop the agent"""
         self.is_running = False
-        self.audio.stop()
-        logger.info(f"Agent stopped. Sent {self.chunks_sent} chunks, received {self.transcriptions_received} transcriptions.")
+        self.recorder.stop()
+        self.uploader.stop()
+        
+        logger.info("=" * 60)
+        logger.info("Agent stopped.")
+        logger.info(f"Clips recorded: {self.recorder.clips_recorded}")
+        logger.info(f"Clips uploaded: {self.uploader.clips_uploaded}")
+        logger.info(f"Pending uploads: {self.uploader.get_pending_count()}")
+        logger.info("=" * 60)
 
 
 def main():
-    parser = argparse.ArgumentParser(description='HomeMic Node Agent')
+    parser = argparse.ArgumentParser(
+        description='HomeMic Node Agent - Batch Recording Mode'
+    )
     parser.add_argument('--server', '-s', default=SERVER_URL,
                         help=f'HomeMic server URL (default: {SERVER_URL})')
     parser.add_argument('--name', '-n', default=NODE_NAME,
@@ -225,7 +246,9 @@ def main():
         capture = AudioCapture()
         print("Available audio input devices:")
         for device in capture.list_devices():
-            print(f"  [{device['index']}] {device['name']} ({device['channels']}ch, {device['sample_rate']}Hz)")
+            default = " (default)" if device.get('default') else ""
+            print(f"  [{device['index']}] {device['name']} "
+                  f"({device['channels']}ch, {device['sample_rate']}Hz){default}")
         return
     
     # Create and run agent

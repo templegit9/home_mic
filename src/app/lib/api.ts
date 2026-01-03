@@ -61,6 +61,43 @@ export interface Keyword {
     last_detected: string | null;
 }
 
+export interface BatchClip {
+    id: string;
+    node_id: string;
+    filename: string;
+    duration_seconds: number;
+    recorded_at: string;
+    status: 'pending' | 'processing' | 'transcribed' | 'failed';
+    word_count: number;
+    transcript_preview?: string | null;
+}
+
+export interface TranscriptSegment {
+    id: string;
+    start_time: number;
+    end_time: number;
+    text: string;
+    confidence: number;
+    speaker_id?: string | null;
+}
+
+export interface BatchClipDetails extends BatchClip {
+    file_size: number;
+    uploaded_at: string;
+    processed_at?: string | null;
+    error_message?: string | null;
+    processing_duration_ms?: number | null;
+    transcript_text?: string | null;
+    segments: TranscriptSegment[];
+}
+
+export interface BatchHistoryResponse {
+    total: number;
+    offset: number;
+    limit: number;
+    clips: BatchClip[];
+}
+
 class ApiClient {
     private baseUrl: string;
 
@@ -179,6 +216,40 @@ class ApiClient {
 
     async deleteTranscription(id: string): Promise<void> {
         await this.fetch(`/api/transcriptions/${id}`, { method: 'DELETE' });
+    }
+
+    // ============ BATCH CLIPS ============
+
+    async getBatchHistory(params?: {
+        node_id?: string;
+        status?: string;
+        start_date?: string;
+        end_date?: string;
+        limit?: number;
+        offset?: number;
+    }): Promise<BatchHistoryResponse> {
+        const query = new URLSearchParams();
+        if (params?.node_id) query.set('node_id', params.node_id);
+        if (params?.status) query.set('status', params.status);
+        if (params?.start_date) query.set('start_date', params.start_date);
+        if (params?.end_date) query.set('end_date', params.end_date);
+        if (params?.limit) query.set('limit', params.limit.toString());
+        if (params?.offset) query.set('offset', params.offset.toString());
+
+        const queryStr = query.toString();
+        return this.fetch<BatchHistoryResponse>(`/api/batch/history${queryStr ? `?${queryStr}` : ''}`);
+    }
+
+    async getBatchClipDetails(clipId: string): Promise<BatchClipDetails> {
+        return this.fetch<BatchClipDetails>(`/api/batch/clips/${clipId}`);
+    }
+
+    async deleteBatchClip(clipId: string, deleteFile: boolean = true): Promise<void> {
+        await this.fetch(`/api/batch/clips/${clipId}?delete_file=${deleteFile}`, { method: 'DELETE' });
+    }
+
+    getClipAudioUrl(clipId: string): string {
+        return `${this.baseUrl}/api/batch/clips/${clipId}/audio`;
     }
 
     // ============ SYSTEM ============

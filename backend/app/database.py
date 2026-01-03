@@ -130,6 +130,61 @@ class SystemMetrics(Base):
     transcription_count = Column(Integer, default=0)
 
 
+class BatchClip(Base):
+    """A 10-minute audio clip uploaded for batch transcription"""
+    __tablename__ = "batch_clips"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    node_id = Column(String, ForeignKey("nodes.id"), nullable=False)
+    
+    # File info
+    filename = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)  # Full path on storage
+    file_size = Column(Integer, default=0)  # Bytes
+    duration_seconds = Column(Float, default=0.0)
+    
+    # Timestamps
+    recorded_at = Column(DateTime, nullable=False)  # When recorded on node
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+    processed_at = Column(DateTime, nullable=True)
+    
+    # Processing status: pending, processing, transcribed, failed
+    status = Column(String, default="pending")
+    error_message = Column(Text, nullable=True)
+    processing_duration_ms = Column(Integer, nullable=True)
+    
+    # Transcription result
+    transcript_text = Column(Text, nullable=True)
+    word_count = Column(Integer, default=0)
+    
+    # Relationships
+    node = relationship("Node", backref="batch_clips")
+    segments = relationship("TranscriptSegment", back_populates="clip", cascade="all, delete-orphan")
+
+
+class TranscriptSegment(Base):
+    """Word-level or phrase-level timestamp segments within a batch clip"""
+    __tablename__ = "transcript_segments"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    clip_id = Column(String, ForeignKey("batch_clips.id"), nullable=False)
+    
+    # Timing within clip
+    start_time = Column(Float, nullable=False)  # Seconds from clip start
+    end_time = Column(Float, nullable=False)
+    
+    # Content
+    text = Column(Text, nullable=False)
+    confidence = Column(Float, default=0.0)
+    
+    # Optional speaker detection
+    speaker_id = Column(String, ForeignKey("speakers.id"), nullable=True)
+    
+    # Relationships
+    clip = relationship("BatchClip", back_populates="segments")
+    speaker = relationship("Speaker")
+
+
 def init_db():
     """Create all tables"""
     Base.metadata.create_all(bind=engine)
