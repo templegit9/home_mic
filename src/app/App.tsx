@@ -14,13 +14,14 @@ import { NodeHealthDashboard } from './components/NodeHealthDashboard';
 import { SystemLogs } from './components/SystemLogs';
 import { BackupRestore } from './components/BackupRestore';
 import { ConversationContext } from './components/ConversationContext';
+import BatchClipViewer from './components/BatchClipViewer';
 import { Button } from './components/ui/button';
 import { Card } from './components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 import {
   Mic, Radio, Users, Bell, BarChart3, Settings, Shield,
   Moon, Sun, Search, TrendingUp, Eye, HardDrive,
-  AlertCircle, MessageCircle, UserCheck, Activity
+  AlertCircle, MessageCircle, UserCheck, Activity, FileAudio
 } from 'lucide-react';
 import { Toaster } from './components/ui/sonner';
 
@@ -31,6 +32,7 @@ type View =
   | 'speaker-correction'
   | 'reminders'
   | 'history'
+  | 'recordings'
   | 'conversations'
   | 'privacy'
   | 'keywords'
@@ -143,6 +145,13 @@ export default function App() {
                 <span className="hidden sm:inline">History</span>
               </TabsTrigger>
               <TabsTrigger
+                value="recordings"
+                className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-3"
+              >
+                <FileAudio className="w-4 h-4 mr-2" />
+                <span className="hidden sm:inline">Recordings</span>
+              </TabsTrigger>
+              <TabsTrigger
                 value="conversations"
                 className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-3"
               >
@@ -194,6 +203,7 @@ export default function App() {
         {activeView === 'speaker-correction' && <SpeakerCorrection />}
         {activeView === 'reminders' && <ReminderManager />}
         {activeView === 'history' && <TranscriptionHistory />}
+        {activeView === 'recordings' && <BatchClipViewer />}
         {activeView === 'conversations' && <ConversationContext />}
         {activeView === 'privacy' && <PrivacyControls />}
         {activeView === 'keywords' && <KeywordDetection />}
