@@ -229,6 +229,7 @@ class BatchRecorder:
         
         # Recording state
         self.is_running = False
+        self._audio_queue = queue.Queue()  # Thread-safe audio buffer for callback
         self._thread: Optional[threading.Thread] = None
         self.current_clip_path: Optional[Path] = None
         
@@ -239,14 +240,25 @@ class BatchRecorder:
         # Stats
         self.clips_recorded = 0
         self.total_seconds = 0.0
+        
+        # Stall detection
+        self._last_callback_time = 0.0
+        self._stall_count = 0
     
     def _find_device(self) -> Optional[int]:
         """Auto-detect USB microphone"""
         capture = AudioCapture()
         return capture.find_usb_microphone()
     
+    def _audio_callback(self, in_data, frame_count, time_info, status):
+        """PyAudio callback - runs in separate thread, non-blocking"""
+        if self.is_running:
+            self._audio_queue.put(in_data)
+            self._last_callback_time = time.time()
+        return (None, pyaudio.paContinue)
+    
     def start(self):
-        """Start batch recording"""
+        """Start batch recording with callback mode for reliability"""
         if self.is_running:
             logger.warning("Batch recorder already running")
             return
@@ -264,23 +276,27 @@ class BatchRecorder:
         self.pa = pyaudio.PyAudio()
         
         try:
+            # Open stream in CALLBACK mode (non-blocking)
             self.stream = self.pa.open(
                 format=pyaudio.paInt16,
                 channels=self.channels,
                 rate=self.sample_rate,
                 input=True,
                 input_device_index=self.device_index,
-                frames_per_buffer=4096
+                frames_per_buffer=4096,
+                stream_callback=self._audio_callback
             )
+            self.stream.start_stream()
         except Exception as e:
             logger.error(f"Failed to open audio stream: {e}")
             self.pa.terminate()
             raise
         
         self.is_running = True
+        self._last_callback_time = time.time()
         
-        # Start recording thread
-        self._thread = threading.Thread(target=self._record_loop, daemon=True)
+        # Start file writer thread
+        self._thread = threading.Thread(target=self._file_writer_loop, daemon=True)
         self._thread.start()
         
         logger.info(f"Batch recorder started (device {self.device_index}, {self.batch_duration}s clips)")
@@ -308,8 +324,33 @@ class BatchRecorder:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return self.storage_dir / f"clip_{timestamp}.wav"
     
-    def _record_loop(self):
-        """Main recording loop - creates 10-minute WAV files"""
+    def _restart_stream(self):
+        """Restart the audio stream after a stall"""
+        logger.warning("Restarting audio stream due to stall...")
+        try:
+            if self.stream:
+                self.stream.stop_stream()
+                self.stream.close()
+            
+            self.stream = self.pa.open(
+                format=pyaudio.paInt16,
+                channels=self.channels,
+                rate=self.sample_rate,
+                input=True,
+                input_device_index=self.device_index,
+                frames_per_buffer=4096,
+                stream_callback=self._audio_callback
+            )
+            self.stream.start_stream()
+            self._last_callback_time = time.time()
+            logger.info("Audio stream restarted successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to restart stream: {e}")
+            return False
+    
+    def _file_writer_loop(self):
+        """Main file writing loop - reads from callback queue, writes to WAV files"""
         while self.is_running:
             try:
                 # Start new clip
@@ -329,50 +370,31 @@ class BatchRecorder:
                 wav_file.setframerate(self.sample_rate)
                 
                 frames_recorded = 0
-                level_check_interval = self.sample_rate  # Check level every second
+                level_check_interval = self.sample_rate
                 frames_since_level_check = 0
                 level_samples = []
-                consecutive_errors = 0
-                max_consecutive_errors = 10  # Restart stream if too many errors
                 
                 try:
                     while self.is_running and frames_recorded < self.frames_per_batch:
-                        # Read audio chunk
-                        try:
-                            data = self.stream.read(4096, exception_on_overflow=False)
-                            consecutive_errors = 0  # Reset on success
-                        except Exception as e:
-                            consecutive_errors += 1
-                            logger.warning(f"Audio read error ({consecutive_errors}): {e}")
-                            
-                            if consecutive_errors >= max_consecutive_errors:
-                                logger.error("Too many consecutive errors, restarting audio stream")
-                                # Try to recover the stream
-                                try:
-                                    self.stream.stop_stream()
-                                    self.stream.close()
-                                    self.stream = self.pa.open(
-                                        format=pyaudio.paInt16,
-                                        channels=self.channels,
-                                        rate=self.sample_rate,
-                                        input=True,
-                                        input_device_index=self.device_index,
-                                        frames_per_buffer=4096
-                                    )
-                                    consecutive_errors = 0
-                                    logger.info("Audio stream restarted successfully")
-                                except Exception as restart_error:
-                                    logger.error(f"Failed to restart stream: {restart_error}")
-                                    raise  # Give up on this clip
-                            
-                            time.sleep(0.1)  # Brief delay before retry
+                        # Check for stall (no callback in 10 seconds)
+                        if time.time() - self._last_callback_time > 10:
+                            logger.warning("Audio callback stalled for 10+ seconds")
+                            self._stall_count += 1
+                            if self._stall_count >= 3:
+                                logger.error("Too many stalls, restarting stream")
+                                if self._restart_stream():
+                                    self._stall_count = 0
+                                else:
+                                    break  # Give up on this clip
+                            time.sleep(1)
                             continue
                         
-                        # Check if we got valid data
-                        if not data or len(data) == 0:
-                            consecutive_errors += 1
-                            logger.warning(f"Empty audio data received ({consecutive_errors})")
-                            continue
+                        # Get audio data from queue with timeout
+                        try:
+                            data = self._audio_queue.get(timeout=2.0)
+                            self._stall_count = 0  # Reset on success
+                        except queue.Empty:
+                            continue  # No data yet, check stall condition
                         
                         # Write to file
                         wav_file.writeframes(data)
@@ -410,8 +432,8 @@ class BatchRecorder:
                     self.on_clip_complete(str(clip_path))
                     
             except Exception as e:
-                logger.error(f"Recording loop error: {e}")
-                time.sleep(1)
+                logger.error(f"File writer loop error: {e}")
+                time.sleep(1)  # Brief pause before retrying
 
 
 if __name__ == "__main__":
