@@ -404,3 +404,264 @@ async def reprocess_all_stuck(
     db.commit()
     logger.info(f"Requeued {count} stuck clips for processing")
     return {"status": "requeued", "count": count}
+
+
+# ============ FILE OPERATIONS ============
+
+@router.get("/clips/{clip_id}/download")
+async def download_clip_audio(
+    clip_id: str,
+    db: Session = Depends(get_db)
+):
+    """Download audio file with proper attachment headers"""
+    clip = db.query(BatchClip).filter(BatchClip.id == clip_id).first()
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip not found")
+    
+    file_path = Path(clip.file_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    
+    # Use display_name if set, otherwise filename
+    download_name = f"{clip.display_name or clip.filename}"
+    if not download_name.endswith('.wav'):
+        download_name += '.wav'
+    
+    return FileResponse(
+        path=file_path,
+        media_type="audio/wav",
+        filename=download_name,
+        headers={"Content-Disposition": f'attachment; filename="{download_name}"'}
+    )
+
+
+@router.get("/clips/{clip_id}/export")
+async def export_transcript(
+    clip_id: str,
+    format: str = Query("txt", regex="^(txt|srt|json)$"),
+    db: Session = Depends(get_db)
+):
+    """Export transcript in TXT, SRT, or JSON format"""
+    from fastapi.responses import Response
+    import json
+    
+    clip = db.query(BatchClip).filter(BatchClip.id == clip_id).first()
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip not found")
+    
+    if not clip.transcript_text and clip.status != "transcribed":
+        raise HTTPException(status_code=400, detail="Clip not yet transcribed")
+    
+    segments = db.query(TranscriptSegment).filter(
+        TranscriptSegment.clip_id == clip_id
+    ).order_by(TranscriptSegment.start_time).all()
+    
+    base_name = clip.display_name or clip.filename.replace('.wav', '')
+    
+    if format == "txt":
+        content = clip.transcript_text or ""
+        return Response(
+            content=content,
+            media_type="text/plain",
+            headers={"Content-Disposition": f'attachment; filename="{base_name}.txt"'}
+        )
+    
+    elif format == "srt":
+        # Generate SRT subtitle format
+        srt_lines = []
+        for i, seg in enumerate(segments, 1):
+            start = format_srt_time(seg.start_time)
+            end = format_srt_time(seg.end_time)
+            srt_lines.append(f"{i}")
+            srt_lines.append(f"{start} --> {end}")
+            srt_lines.append(seg.text)
+            srt_lines.append("")
+        
+        content = "\n".join(srt_lines)
+        return Response(
+            content=content,
+            media_type="text/plain",
+            headers={"Content-Disposition": f'attachment; filename="{base_name}.srt"'}
+        )
+    
+    elif format == "json":
+        data = {
+            "clip_id": clip.id,
+            "filename": clip.filename,
+            "display_name": clip.display_name,
+            "recorded_at": clip.recorded_at.isoformat() if clip.recorded_at else None,
+            "duration_seconds": clip.duration_seconds,
+            "transcript": clip.transcript_text,
+            "word_count": clip.word_count,
+            "segments": [
+                {
+                    "start": seg.start_time,
+                    "end": seg.end_time,
+                    "text": seg.text,
+                    "confidence": seg.confidence
+                }
+                for seg in segments
+            ]
+        }
+        return Response(
+            content=json.dumps(data, indent=2),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{base_name}.json"'}
+        )
+
+
+def format_srt_time(seconds: float) -> str:
+    """Convert seconds to SRT timestamp format (HH:MM:SS,mmm)"""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    millis = int((seconds % 1) * 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+
+from pydantic import BaseModel
+
+class ClipUpdate(BaseModel):
+    display_name: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@router.patch("/clips/{clip_id}")
+async def update_clip_metadata(
+    clip_id: str,
+    updates: ClipUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update clip metadata (display_name, notes)"""
+    clip = db.query(BatchClip).filter(BatchClip.id == clip_id).first()
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip not found")
+    
+    if updates.display_name is not None:
+        clip.display_name = updates.display_name
+    if updates.notes is not None:
+        clip.notes = updates.notes
+    
+    db.commit()
+    
+    return {
+        "id": clip.id,
+        "display_name": clip.display_name,
+        "notes": clip.notes
+    }
+
+
+class BulkDeleteRequest(BaseModel):
+    clip_ids: List[str]
+    delete_files: bool = True
+
+
+@router.post("/bulk/delete")
+async def bulk_delete_clips(
+    request: BulkDeleteRequest,
+    db: Session = Depends(get_db)
+):
+    """Delete multiple clips at once"""
+    deleted = 0
+    errors = []
+    
+    for clip_id in request.clip_ids:
+        clip = db.query(BatchClip).filter(BatchClip.id == clip_id).first()
+        if not clip:
+            errors.append(f"Clip {clip_id} not found")
+            continue
+        
+        file_path = Path(clip.file_path)
+        
+        # Delete from database
+        db.delete(clip)
+        
+        # Delete audio file if requested
+        if request.delete_files and file_path.exists():
+            try:
+                file_path.unlink()
+            except Exception as e:
+                errors.append(f"Could not delete file for {clip_id}: {e}")
+        
+        deleted += 1
+    
+    db.commit()
+    logger.info(f"Bulk deleted {deleted} clips")
+    
+    return {
+        "status": "completed",
+        "deleted": deleted,
+        "errors": errors if errors else None
+    }
+
+
+class BulkExportRequest(BaseModel):
+    clip_ids: List[str]
+    format: str = "txt"
+
+
+@router.post("/bulk/export")
+async def bulk_export_transcripts(
+    request: BulkExportRequest,
+    db: Session = Depends(get_db)
+):
+    """Export multiple transcripts as a ZIP file"""
+    import zipfile
+    import tempfile
+    import json
+    
+    if request.format not in ["txt", "srt", "json"]:
+        raise HTTPException(status_code=400, detail="Invalid format. Use txt, srt, or json")
+    
+    clips = db.query(BatchClip).filter(
+        BatchClip.id.in_(request.clip_ids)
+    ).all()
+    
+    if not clips:
+        raise HTTPException(status_code=404, detail="No clips found")
+    
+    # Create temporary ZIP file
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        zip_path = tmp.name
+    
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for clip in clips:
+            if not clip.transcript_text and clip.status != "transcribed":
+                continue
+            
+            base_name = clip.display_name or clip.filename.replace('.wav', '')
+            
+            segments = db.query(TranscriptSegment).filter(
+                TranscriptSegment.clip_id == clip.id
+            ).order_by(TranscriptSegment.start_time).all()
+            
+            if request.format == "txt":
+                content = clip.transcript_text or ""
+                zf.writestr(f"{base_name}.txt", content)
+            
+            elif request.format == "srt":
+                srt_lines = []
+                for i, seg in enumerate(segments, 1):
+                    start = format_srt_time(seg.start_time)
+                    end = format_srt_time(seg.end_time)
+                    srt_lines.extend([str(i), f"{start} --> {end}", seg.text, ""])
+                zf.writestr(f"{base_name}.srt", "\n".join(srt_lines))
+            
+            elif request.format == "json":
+                data = {
+                    "clip_id": clip.id,
+                    "filename": clip.filename,
+                    "transcript": clip.transcript_text,
+                    "segments": [
+                        {"start": s.start_time, "end": s.end_time, "text": s.text}
+                        for s in segments
+                    ]
+                }
+                zf.writestr(f"{base_name}.json", json.dumps(data, indent=2))
+    
+    return FileResponse(
+        path=zip_path,
+        media_type="application/zip",
+        filename=f"transcripts_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+        background=None  # Will be cleaned up by FileResponse
+    )

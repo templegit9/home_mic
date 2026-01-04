@@ -157,6 +157,10 @@ class BatchClip(Base):
     transcript_text = Column(Text, nullable=True)
     word_count = Column(Integer, default=0)
     
+    # User-customizable metadata
+    display_name = Column(String, nullable=True)  # Custom name
+    notes = Column(Text, nullable=True)  # User notes/tags
+    
     # Relationships
     node = relationship("Node", backref="batch_clips")
     segments = relationship("TranscriptSegment", back_populates="clip", cascade="all, delete-orphan")

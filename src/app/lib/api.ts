@@ -256,6 +256,39 @@ class ApiClient {
         return `${this.baseUrl}/api/batch/clips/${clipId}/audio`;
     }
 
+    getClipDownloadUrl(clipId: string): string {
+        return `${this.baseUrl}/api/batch/clips/${clipId}/download`;
+    }
+
+    getExportTranscriptUrl(clipId: string, format: 'txt' | 'srt' | 'json' = 'txt'): string {
+        return `${this.baseUrl}/api/batch/clips/${clipId}/export?format=${format}`;
+    }
+
+    async updateClipMetadata(clipId: string, updates: { display_name?: string; notes?: string }): Promise<{ id: string; display_name: string | null; notes: string | null }> {
+        return this.fetch(`/api/batch/clips/${clipId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(updates),
+        });
+    }
+
+    async bulkDeleteClips(clipIds: string[], deleteFiles: boolean = true): Promise<{ status: string; deleted: number; errors?: string[] }> {
+        return this.fetch('/api/batch/bulk/delete', {
+            method: 'POST',
+            body: JSON.stringify({ clip_ids: clipIds, delete_files: deleteFiles }),
+        });
+    }
+
+    async bulkExportClips(clipIds: string[], format: 'txt' | 'srt' | 'json' = 'txt'): Promise<Blob> {
+        const url = `${this.baseUrl}/api/batch/bulk/export`;
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clip_ids: clipIds, format }),
+        });
+        if (!response.ok) throw new Error('Export failed');
+        return response.blob();
+    }
+
     // ============ SYSTEM ============
 
     async getSystemStatus(): Promise<SystemStatus> {

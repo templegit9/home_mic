@@ -42,6 +42,11 @@ export default function BatchClipViewer() {
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
 
+    // Action state
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [showExportMenu, setShowExportMenu] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+
     // Update current time as audio plays
     useEffect(() => {
         const audio = audioRef.current;
@@ -103,6 +108,35 @@ export default function BatchClipViewer() {
             }
             setIsPlaying(!isPlaying);
         }
+    };
+
+    // Delete clip handler
+    const handleDelete = async () => {
+        if (!selectedClipId) return;
+        setIsDeleting(true);
+        try {
+            await api.deleteBatchClip(selectedClipId);
+            setSelectedClipId(null);
+            setShowDeleteConfirm(false);
+            refresh();
+        } catch (e) {
+            console.error('Delete failed:', e);
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    // Download audio handler
+    const handleDownload = () => {
+        if (!selectedClipId) return;
+        window.open(api.getClipDownloadUrl(selectedClipId), '_blank');
+    };
+
+    // Export transcript handler
+    const handleExport = (format: 'txt' | 'srt' | 'json') => {
+        if (!selectedClipId) return;
+        window.open(api.getExportTranscriptUrl(selectedClipId, format), '_blank');
+        setShowExportMenu(false);
     };
 
     // Find current segment based on playback time
@@ -238,7 +272,69 @@ export default function BatchClipViewer() {
                                         <span>{formatDuration(duration)}</span>
                                     </div>
                                 </div>
+
+                                {/* Action Buttons */}
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={handleDownload}
+                                        className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-sm flex items-center gap-1.5"
+                                        title="Download Audio"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        </svg>
+                                        Download
+                                    </button>
+
+                                    <div className="relative">
+                                        <button
+                                            onClick={() => setShowExportMenu(!showExportMenu)}
+                                            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-sm flex items-center gap-1.5"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                            </svg>
+                                            Export
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </button>
+                                        {showExportMenu && (
+                                            <div className="absolute right-0 mt-1 bg-gray-700 rounded shadow-lg z-10 py-1 min-w-[120px]">
+                                                <button onClick={() => handleExport('txt')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-600">Text (.txt)</button>
+                                                <button onClick={() => handleExport('srt')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-600">Subtitles (.srt)</button>
+                                                <button onClick={() => handleExport('json')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-600">JSON (.json)</button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <button
+                                        onClick={() => setShowDeleteConfirm(true)}
+                                        className="px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded text-sm flex items-center gap-1.5"
+                                        title="Delete"
+                                    >
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
+                                </div>
                             </div>
+
+                            {/* Delete Confirmation Modal */}
+                            {showDeleteConfirm && (
+                                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                                    <div className="bg-gray-800 p-6 rounded-lg max-w-sm">
+                                        <h3 className="text-lg font-semibold mb-2">Delete Recording?</h3>
+                                        <p className="text-gray-400 mb-4">This will permanently delete the audio file and transcript.</p>
+                                        <div className="flex justify-end gap-3">
+                                            <button onClick={() => setShowDeleteConfirm(false)} className="px-4 py-2 bg-gray-700 rounded hover:bg-gray-600">Cancel</button>
+                                            <button onClick={handleDelete} disabled={isDeleting} className="px-4 py-2 bg-red-600 rounded hover:bg-red-500 disabled:opacity-50">
+                                                {isDeleting ? 'Deleting...' : 'Delete'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             {audioUrl && (
                                 <audio ref={audioRef} src={audioUrl} preload="metadata" />
                             )}
