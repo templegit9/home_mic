@@ -10,6 +10,7 @@ from pathlib import Path
 import shutil
 import wave
 import logging
+import threading
 from typing import Optional, List
 
 from ..database import get_db, BatchClip, TranscriptSegment, Node
@@ -32,7 +33,7 @@ def get_audio_duration(file_path: Path) -> float:
 
 
 def process_clip_transcription(clip_id: str):
-    """Background task to transcribe a clip"""
+    """Background task to transcribe a clip - runs in separate thread"""
     from ..services.transcription import get_transcription_service
     from ..database import SessionLocal
     
@@ -48,6 +49,7 @@ def process_clip_transcription(clip_id: str):
         clip.status = "processing"
         db.commit()
         
+        logger.info(f"Starting transcription for clip {clip_id}")
         start_time = datetime.utcnow()
         
         # Get transcription service
@@ -82,6 +84,8 @@ def process_clip_transcription(clip_id: str):
         
     except Exception as e:
         logger.error(f"Transcription failed for clip {clip_id}: {e}")
+        import traceback
+        traceback.print_exc()
         try:
             clip = db.query(BatchClip).filter(BatchClip.id == clip_id).first()
             if clip:
@@ -92,6 +96,13 @@ def process_clip_transcription(clip_id: str):
             pass
     finally:
         db.close()
+
+
+def start_transcription_thread(clip_id: str):
+    """Start transcription in a separate thread"""
+    thread = threading.Thread(target=process_clip_transcription, args=(clip_id,), daemon=True)
+    thread.start()
+    return thread
 
 
 @router.post("/upload")
@@ -166,8 +177,8 @@ async def upload_batch_clip(
         
         logger.info(f"Uploaded clip: {audio.filename} ({duration:.1f}s, {file_size} bytes)")
         
-        # Queue background transcription
-        background_tasks.add_task(process_clip_transcription, clip.id)
+        # Start transcription in separate thread
+        start_transcription_thread(clip.id)
         
         return {
             "status": "processing",
@@ -364,8 +375,8 @@ async def reprocess_clip(
     db.query(TranscriptSegment).filter(TranscriptSegment.clip_id == clip_id).delete()
     db.commit()
     
-    # Queue for reprocessing
-    background_tasks.add_task(process_clip_transcription, clip.id)
+    # Start transcription in separate thread
+    start_transcription_thread(clip.id)
     
     logger.info(f"Requeued clip for processing: {clip_id}")
     return {"status": "requeued", "clip_id": clip_id}
@@ -387,7 +398,7 @@ async def reprocess_all_stuck(
         if file_path.exists():
             clip.status = "pending"
             clip.error_message = None
-            background_tasks.add_task(process_clip_transcription, clip.id)
+            start_transcription_thread(clip.id)
             count += 1
     
     db.commit()
