@@ -92,6 +92,8 @@ export interface BatchClipDetails extends BatchClip {
     error_message?: string | null;
     processing_duration_ms?: number | null;
     transcript_text?: string | null;
+    display_name?: string | null;
+    notes?: string | null;
     segments: TranscriptSegment[];
 }
 

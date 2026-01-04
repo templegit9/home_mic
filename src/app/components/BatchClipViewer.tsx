@@ -47,6 +47,16 @@ export default function BatchClipViewer() {
     const [showExportMenu, setShowExportMenu] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
+    // Bulk selection state
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [showBulkExportMenu, setShowBulkExportMenu] = useState(false);
+
+    // Edit mode state
+    const [isEditing, setIsEditing] = useState(false);
+    const [editName, setEditName] = useState('');
+    const [editNotes, setEditNotes] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+
     // Update current time as audio plays
     useEffect(() => {
         const audio = audioRef.current;
@@ -139,15 +149,90 @@ export default function BatchClipViewer() {
         setShowExportMenu(false);
     };
 
-    // Find current segment based on playback time
-    const currentSegment = selectedClip?.segments.find(
-        seg => currentTime >= seg.start_time && currentTime < seg.end_time
-    );
+    // Bulk selection handlers
+    const toggleSelection = (clipId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(clipId)) next.delete(clipId);
+            else next.add(clipId);
+            return next;
+        });
+    };
+
+    const selectAll = () => {
+        if (selectedIds.size === filteredClips.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(filteredClips.map(c => c.id)));
+        }
+    };
+
+    // Start editing handler
+    const startEditing = () => {
+        if (!selectedClip) return;
+        setEditName(selectedClip.display_name || selectedClip.filename.replace('.wav', ''));
+        setEditNotes(selectedClip.notes || '');
+        setIsEditing(true);
+    };
+
+    // Save metadata handler
+    const handleSaveMetadata = async () => {
+        if (!selectedClipId) return;
+        setIsSaving(true);
+        try {
+            await api.updateClipMetadata(selectedClipId, {
+                display_name: editName || undefined,
+                notes: editNotes || undefined,
+            });
+            setIsEditing(false);
+            refresh();
+        } catch (e) {
+            console.error('Save failed:', e);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    // Bulk delete handler
+    const handleBulkDelete = async () => {
+        if (selectedIds.size === 0) return;
+        if (!confirm(`Delete ${selectedIds.size} recordings?`)) return;
+        try {
+            await api.bulkDeleteClips(Array.from(selectedIds));
+            setSelectedIds(new Set());
+            refresh();
+        } catch (e) {
+            console.error('Bulk delete failed:', e);
+        }
+    };
+
+    // Bulk export handler
+    const handleBulkExport = async (format: 'txt' | 'srt' | 'json') => {
+        if (selectedIds.size === 0) return;
+        try {
+            const blob = await api.bulkExportClips(Array.from(selectedIds), format);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `transcripts_${new Date().toISOString().slice(0, 10)}.zip`;
+            a.click();
+            URL.revokeObjectURL(url);
+            setShowBulkExportMenu(false);
+        } catch (e) {
+            console.error('Bulk export failed:', e);
+        }
+    };
 
     // Filter clips by search (client-side for now)
     const filteredClips = searchQuery
         ? clips.filter(c => c.transcript_preview?.toLowerCase().includes(searchQuery.toLowerCase()))
         : clips;
+
+    // Find current segment based on playback time
+    const currentSegment = selectedClip?.segments.find(
+        seg => currentTime >= seg.start_time && currentTime < seg.end_time
+    );
 
     return (
         <div className="flex h-full bg-gray-900 text-white">
@@ -163,6 +248,19 @@ export default function BatchClipViewer() {
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-sm focus:outline-none focus:border-blue-500"
                     />
+                    {/* Select All */}
+                    <div className="flex items-center justify-between mt-3 text-sm">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={selectedIds.size === filteredClips.length && filteredClips.length > 0}
+                                onChange={selectAll}
+                                className="w-4 h-4 rounded bg-gray-700 border-gray-600"
+                            />
+                            <span className="text-gray-400">Select All</span>
+                        </label>
+                        <span className="text-gray-500">{selectedIds.size > 0 ? `${selectedIds.size} selected` : ''}</span>
+                    </div>
                 </div>
 
                 {/* Clip List */}
@@ -182,14 +280,23 @@ export default function BatchClipViewer() {
                                     }`}
                             >
                                 <div className="flex items-center justify-between mb-2">
-                                    <span className="text-sm text-gray-400">
-                                        {formatTimestamp(c.recorded_at)}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedIds.has(c.id)}
+                                            onClick={(e) => toggleSelection(c.id, e)}
+                                            onChange={() => { }}
+                                            className="w-4 h-4 rounded bg-gray-700 border-gray-600"
+                                        />
+                                        <span className="text-sm text-gray-400">
+                                            {formatTimestamp(c.recorded_at)}
+                                        </span>
+                                    </div>
                                     <span className={`px-2 py-0.5 text-xs rounded-full text-white ${getStatusColor(c.status)}`}>
                                         {c.status}
                                     </span>
                                 </div>
-                                <div className="flex items-center gap-2 text-sm mb-2">
+                                <div className="flex items-center gap-2 text-sm mb-2 ml-6">
                                     <span className="text-gray-300">{formatDuration(c.duration_seconds)}</span>
                                     {c.word_count > 0 && (
                                         <span className="text-gray-500">• {c.word_count} words</span>
@@ -248,9 +355,46 @@ export default function BatchClipViewer() {
                                     )}
                                 </button>
                                 <div className="flex-1">
-                                    <div className="text-sm text-gray-400 mb-1">
-                                        {formatTimestamp(selectedClip.recorded_at)}
-                                    </div>
+                                    {/* Editable Name/Notes */}
+                                    {isEditing ? (
+                                        <div className="space-y-2">
+                                            <input
+                                                type="text"
+                                                value={editName}
+                                                onChange={(e) => setEditName(e.target.value)}
+                                                placeholder="Recording name"
+                                                className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm focus:outline-none focus:border-blue-500"
+                                            />
+                                            <textarea
+                                                value={editNotes}
+                                                onChange={(e) => setEditNotes(e.target.value)}
+                                                placeholder="Notes / tags"
+                                                rows={2}
+                                                className="w-full px-2 py-1 bg-gray-700 border border-gray-600 rounded text-sm focus:outline-none focus:border-blue-500 resize-none"
+                                            />
+                                            <div className="flex gap-2">
+                                                <button onClick={handleSaveMetadata} disabled={isSaving} className="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs disabled:opacity-50">
+                                                    {isSaving ? 'Saving...' : 'Save'}
+                                                </button>
+                                                <button onClick={() => setIsEditing(false)} className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs">Cancel</button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="font-medium">{selectedClip.display_name || selectedClip.filename.replace('.wav', '')}</span>
+                                                <button onClick={startEditing} className="text-gray-400 hover:text-white text-xs">
+                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                            <div className="text-sm text-gray-400">{formatTimestamp(selectedClip.recorded_at)}</div>
+                                            {selectedClip.notes && (
+                                                <div className="text-xs text-gray-500 mt-1">{selectedClip.notes}</div>
+                                            )}
+                                        </div>
+                                    )}
                                     <div className="flex items-center gap-2 text-sm">
                                         <span>{formatDuration(currentTime)}</span>
                                         <div
@@ -433,6 +577,47 @@ export default function BatchClipViewer() {
                     </div>
                 )}
             </div>
+
+            {/* Floating Bulk Action Bar */}
+            {selectedIds.size > 0 && (
+                <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-800 border border-gray-600 rounded-lg shadow-2xl px-6 py-3 flex items-center gap-4 z-50">
+                    <span className="text-sm font-medium">{selectedIds.size} selected</span>
+                    <div className="h-6 w-px bg-gray-600" />
+
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowBulkExportMenu(!showBulkExportMenu)}
+                            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm flex items-center gap-2"
+                        >
+                            Export All
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        {showBulkExportMenu && (
+                            <div className="absolute bottom-full mb-2 left-0 bg-gray-700 rounded shadow-lg z-10 py-1 min-w-[120px]">
+                                <button onClick={() => handleBulkExport('txt')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-600">Text (.txt)</button>
+                                <button onClick={() => handleBulkExport('srt')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-600">Subtitles (.srt)</button>
+                                <button onClick={() => handleBulkExport('json')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-600">JSON (.json)</button>
+                            </div>
+                        )}
+                    </div>
+
+                    <button
+                        onClick={handleBulkDelete}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded text-sm"
+                    >
+                        Delete All
+                    </button>
+
+                    <button
+                        onClick={() => setSelectedIds(new Set())}
+                        className="px-3 py-2 text-gray-400 hover:text-white text-sm"
+                    >
+                        Cancel
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
