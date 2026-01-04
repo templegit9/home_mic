@@ -14,6 +14,8 @@ import {
 // API base URL
 const API_URL = import.meta.env.VITE_API_URL || 'http://10.0.0.135:8420';
 const WS_URL = (import.meta.env.VITE_WS_URL || 'ws://10.0.0.135:8420').replace('ws://', 'ws://').replace('http://', 'ws://');
+// Recovery service runs on port 8001 - used when main backend is down
+const RECOVERY_URL = 'http://10.0.0.135:8001';
 
 interface NodeStatus {
     id: string;
@@ -77,19 +79,30 @@ export function SystemControlPanel() {
         setBackendUpdating(true);
         setLastAction(null);
         try {
+            // Try main API first
             const res = await fetch(`${API_URL}/api/control/backend/update`, { method: 'POST' });
             const data = await res.json();
             if (data.success) {
                 setLastAction('Backend updating... page will refresh shortly');
-                // Backend will restart, wait then refresh
-                setTimeout(() => {
-                    window.location.reload();
-                }, 3000);
+                setTimeout(() => window.location.reload(), 3000);
             } else {
                 setLastAction(`Backend update failed: ${data.error}`);
             }
         } catch (err) {
-            setLastAction(`Backend update error: ${err}`);
+            // Main API unreachable - try recovery service
+            console.log('Main API down, trying recovery service...');
+            try {
+                const res = await fetch(`${RECOVERY_URL}/update`, { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    setLastAction('Backend updating via recovery service... page will refresh shortly');
+                    setTimeout(() => window.location.reload(), 5000);
+                } else {
+                    setLastAction(`Recovery service error: ${data.error}`);
+                }
+            } catch (recoveryErr) {
+                setLastAction(`Both main and recovery services unreachable. SSH restart required.`);
+            }
         } finally {
             setBackendUpdating(false);
         }
