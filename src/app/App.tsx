@@ -176,7 +176,7 @@ export default function App() {
             <SystemStatus />
 
             <div className="grid gap-6 lg:grid-cols-2">
-              <BatchClipViewer />
+              <BatchClipViewer readOnly />
 
               <div className="space-y-6">
                 <DashboardSidebar />

@@ -30,7 +30,11 @@ function getStatusColor(status: string): string {
     }
 }
 
-export default function BatchClipViewer() {
+interface BatchClipViewerProps {
+    readOnly?: boolean;
+}
+
+export default function BatchClipViewer({ readOnly = false }: BatchClipViewerProps) {
     const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const { clips, total, loading, error, refresh, offset, nextPage, prevPage } = useBatchClips({ limit: 15 });
@@ -248,19 +252,21 @@ export default function BatchClipViewer() {
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-sm focus:outline-none focus:border-blue-500"
                     />
-                    {/* Select All */}
-                    <div className="flex items-center justify-between mt-3 text-sm">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={selectedIds.size === filteredClips.length && filteredClips.length > 0}
-                                onChange={selectAll}
-                                className="w-4 h-4 rounded bg-gray-700 border-gray-600"
-                            />
-                            <span className="text-gray-400">Select All</span>
-                        </label>
-                        <span className="text-gray-500">{selectedIds.size > 0 ? `${selectedIds.size} selected` : ''}</span>
-                    </div>
+                    {/* Select All - only in edit mode */}
+                    {!readOnly && (
+                        <div className="flex items-center justify-between mt-3 text-sm">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={selectedIds.size === filteredClips.length && filteredClips.length > 0}
+                                    onChange={selectAll}
+                                    className="w-4 h-4 rounded bg-gray-700 border-gray-600"
+                                />
+                                <span className="text-gray-400">Select All</span>
+                            </label>
+                            <span className="text-gray-500">{selectedIds.size > 0 ? `${selectedIds.size} selected` : ''}</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Clip List */}
@@ -281,13 +287,15 @@ export default function BatchClipViewer() {
                             >
                                 <div className="flex items-center justify-between mb-2">
                                     <div className="flex items-center gap-2">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedIds.has(c.id)}
-                                            onClick={(e) => toggleSelection(c.id, e)}
-                                            onChange={() => { }}
-                                            className="w-4 h-4 rounded bg-gray-700 border-gray-600"
-                                        />
+                                        {!readOnly && (
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedIds.has(c.id)}
+                                                onClick={(e) => toggleSelection(c.id, e)}
+                                                onChange={() => { }}
+                                                className="w-4 h-4 rounded bg-gray-700 border-gray-600"
+                                            />
+                                        )}
                                         <span className="text-sm text-gray-400">
                                             {formatTimestamp(c.recorded_at)}
                                         </span>
@@ -296,7 +304,7 @@ export default function BatchClipViewer() {
                                         {c.status}
                                     </span>
                                 </div>
-                                <div className="flex items-center gap-2 text-sm mb-2 ml-6">
+                                <div className={`flex items-center gap-2 text-sm mb-2 ${!readOnly ? 'ml-6' : ''}`}>
                                     <span className="text-gray-300">{formatDuration(c.duration_seconds)}</span>
                                     {c.word_count > 0 && (
                                         <span className="text-gray-500">• {c.word_count} words</span>
@@ -383,11 +391,13 @@ export default function BatchClipViewer() {
                                         <div>
                                             <div className="flex items-center gap-2 mb-1">
                                                 <span className="font-medium">{selectedClip.display_name || selectedClip.filename.replace('.wav', '')}</span>
-                                                <button onClick={startEditing} className="text-gray-400 hover:text-white text-xs">
-                                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                                    </svg>
-                                                </button>
+                                                {!readOnly && (
+                                                    <button onClick={startEditing} className="text-gray-400 hover:text-white text-xs">
+                                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                                        </svg>
+                                                    </button>
+                                                )}
                                             </div>
                                             <div className="text-sm text-gray-400">{formatTimestamp(selectedClip.recorded_at)}</div>
                                             {selectedClip.notes && (
@@ -417,55 +427,57 @@ export default function BatchClipViewer() {
                                     </div>
                                 </div>
 
-                                {/* Action Buttons */}
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={handleDownload}
-                                        className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-sm flex items-center gap-1.5"
-                                        title="Download Audio"
-                                    >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                        </svg>
-                                        Download
-                                    </button>
-
-                                    <div className="relative">
+                                {/* Action Buttons - only in edit mode */}
+                                {!readOnly && (
+                                    <div className="flex items-center gap-2">
                                         <button
-                                            onClick={() => setShowExportMenu(!showExportMenu)}
+                                            onClick={handleDownload}
                                             className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-sm flex items-center gap-1.5"
+                                            title="Download Audio"
                                         >
                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                             </svg>
-                                            Export
-                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            Download
+                                        </button>
+
+                                        <div className="relative">
+                                            <button
+                                                onClick={() => setShowExportMenu(!showExportMenu)}
+                                                className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-sm flex items-center gap-1.5"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                </svg>
+                                                Export
+                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                </svg>
+                                            </button>
+                                            {showExportMenu && (
+                                                <div className="absolute right-0 mt-1 bg-gray-700 rounded shadow-lg z-10 py-1 min-w-[120px]">
+                                                    <button onClick={() => handleExport('txt')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-600">Text (.txt)</button>
+                                                    <button onClick={() => handleExport('srt')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-600">Subtitles (.srt)</button>
+                                                    <button onClick={() => handleExport('json')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-600">JSON (.json)</button>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <button
+                                            onClick={() => setShowDeleteConfirm(true)}
+                                            className="px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded text-sm flex items-center gap-1.5"
+                                            title="Delete"
+                                        >
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                             </svg>
                                         </button>
-                                        {showExportMenu && (
-                                            <div className="absolute right-0 mt-1 bg-gray-700 rounded shadow-lg z-10 py-1 min-w-[120px]">
-                                                <button onClick={() => handleExport('txt')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-600">Text (.txt)</button>
-                                                <button onClick={() => handleExport('srt')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-600">Subtitles (.srt)</button>
-                                                <button onClick={() => handleExport('json')} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-600">JSON (.json)</button>
-                                            </div>
-                                        )}
                                     </div>
-
-                                    <button
-                                        onClick={() => setShowDeleteConfirm(true)}
-                                        className="px-3 py-1.5 bg-red-600 hover:bg-red-500 rounded text-sm flex items-center gap-1.5"
-                                        title="Delete"
-                                    >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                        </svg>
-                                    </button>
-                                </div>
+                                )}
                             </div>
 
                             {/* Delete Confirmation Modal */}
-                            {showDeleteConfirm && (
+                            {!readOnly && showDeleteConfirm && (
                                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                                     <div className="bg-gray-800 p-6 rounded-lg max-w-sm">
                                         <h3 className="text-lg font-semibold mb-2">Delete Recording?</h3>
@@ -578,8 +590,8 @@ export default function BatchClipViewer() {
                 )}
             </div>
 
-            {/* Floating Bulk Action Bar */}
-            {selectedIds.size > 0 && (
+            {/* Floating Bulk Action Bar - only in edit mode */}
+            {!readOnly && selectedIds.size > 0 && (
                 <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-800 border border-gray-600 rounded-lg shadow-2xl px-6 py-3 flex items-center gap-4 z-50">
                     <span className="text-sm font-medium">{selectedIds.size} selected</span>
                     <div className="h-6 w-px bg-gray-600" />
