@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useBatchClips, useBatchClipDetails } from '../hooks/useApi';
 import { api, TranscriptSegment } from '../lib/api';
+import { AudioWaveform } from './AudioWaveform';
 
 // Format duration in mm:ss
 function formatDuration(seconds: number): string {
@@ -47,19 +48,40 @@ export default function BatchClipViewer() {
         if (!audio) return;
 
         const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
-        const handleDurationChange = () => setDuration(audio.duration);
+        const handleDurationChange = () => {
+            // Use audio's duration if valid, otherwise fallback to clip's known duration
+            if (audio.duration && isFinite(audio.duration)) {
+                setDuration(audio.duration);
+            }
+        };
+        const handleLoadedMetadata = () => {
+            // Set duration when metadata loads
+            if (audio.duration && isFinite(audio.duration)) {
+                setDuration(audio.duration);
+            } else if (selectedClip?.duration_seconds) {
+                // Fallback to clip's known duration for WAV files
+                setDuration(selectedClip.duration_seconds);
+            }
+        };
         const handleEnded = () => setIsPlaying(false);
 
         audio.addEventListener('timeupdate', handleTimeUpdate);
         audio.addEventListener('durationchange', handleDurationChange);
+        audio.addEventListener('loadedmetadata', handleLoadedMetadata);
         audio.addEventListener('ended', handleEnded);
+
+        // If we already have metadata, set duration now
+        if (audio.readyState >= 1) {
+            handleLoadedMetadata();
+        }
 
         return () => {
             audio.removeEventListener('timeupdate', handleTimeUpdate);
             audio.removeEventListener('durationchange', handleDurationChange);
+            audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
             audio.removeEventListener('ended', handleEnded);
         };
-    }, [audioUrl]);
+    }, [audioUrl, selectedClip]);
 
     // Handle segment click - seek to that time
     const seekToSegment = (segment: TranscriptSegment) => {
@@ -197,9 +219,19 @@ export default function BatchClipViewer() {
                                     </div>
                                     <div className="flex items-center gap-2 text-sm">
                                         <span>{formatDuration(currentTime)}</span>
-                                        <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
+                                        <div
+                                            className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden cursor-pointer"
+                                            onClick={(e) => {
+                                                if (audioRef.current && duration > 0) {
+                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                    const clickX = e.clientX - rect.left;
+                                                    const percent = clickX / rect.width;
+                                                    audioRef.current.currentTime = percent * duration;
+                                                }
+                                            }}
+                                        >
                                             <div
-                                                className="h-full bg-blue-500 transition-all"
+                                                className="h-full bg-blue-500 transition-all pointer-events-none"
                                                 style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
                                             />
                                         </div>
@@ -209,6 +241,23 @@ export default function BatchClipViewer() {
                             </div>
                             {audioUrl && (
                                 <audio ref={audioRef} src={audioUrl} preload="metadata" />
+                            )}
+
+                            {/* Waveform Visualization */}
+                            {audioUrl && (
+                                <div className="mt-4">
+                                    <AudioWaveform
+                                        audioUrl={audioUrl}
+                                        currentTime={currentTime}
+                                        duration={duration}
+                                        onSeek={(time) => {
+                                            if (audioRef.current) {
+                                                audioRef.current.currentTime = time;
+                                            }
+                                        }}
+                                        height={60}
+                                    />
+                                </div>
                             )}
                         </div>
 
@@ -225,8 +274,8 @@ export default function BatchClipViewer() {
                                             key={seg.id}
                                             onClick={() => seekToSegment(seg)}
                                             className={`p-3 rounded-lg cursor-pointer transition-colors ${currentSegment?.id === seg.id
-                                                    ? 'bg-blue-600 text-white'
-                                                    : 'bg-gray-800 hover:bg-gray-700'
+                                                ? 'bg-blue-600 text-white'
+                                                : 'bg-gray-800 hover:bg-gray-700'
                                                 }`}
                                         >
                                             <div className="flex items-center gap-2 mb-1">

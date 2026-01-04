@@ -31,16 +31,20 @@ def get_audio_duration(file_path: Path) -> float:
         return 0.0
 
 
-def process_clip_transcription(clip_id: str, db: Session):
+def process_clip_transcription(clip_id: str):
     """Background task to transcribe a clip"""
     from ..services.transcription import get_transcription_service
+    from ..database import SessionLocal
     
-    clip = db.query(BatchClip).filter(BatchClip.id == clip_id).first()
-    if not clip:
-        logger.error(f"Clip not found for processing: {clip_id}")
-        return
+    # Create our own database session for background task
+    db = SessionLocal()
     
     try:
+        clip = db.query(BatchClip).filter(BatchClip.id == clip_id).first()
+        if not clip:
+            logger.error(f"Clip not found for processing: {clip_id}")
+            return
+        
         clip.status = "processing"
         db.commit()
         
@@ -78,9 +82,16 @@ def process_clip_transcription(clip_id: str, db: Session):
         
     except Exception as e:
         logger.error(f"Transcription failed for clip {clip_id}: {e}")
-        clip.status = "failed"
-        clip.error_message = str(e)
-        db.commit()
+        try:
+            clip = db.query(BatchClip).filter(BatchClip.id == clip_id).first()
+            if clip:
+                clip.status = "failed"
+                clip.error_message = str(e)
+                db.commit()
+        except:
+            pass
+    finally:
+        db.close()
 
 
 @router.post("/upload")
@@ -156,7 +167,7 @@ async def upload_batch_clip(
         logger.info(f"Uploaded clip: {audio.filename} ({duration:.1f}s, {file_size} bytes)")
         
         # Queue background transcription
-        background_tasks.add_task(process_clip_transcription, clip.id, db)
+        background_tasks.add_task(process_clip_transcription, clip.id)
         
         return {
             "status": "processing",
@@ -323,3 +334,62 @@ async def delete_clip(
             logger.warning(f"Could not delete audio file: {e}")
     
     return {"status": "deleted", "clip_id": clip_id}
+
+
+@router.post("/clips/{clip_id}/reprocess")
+async def reprocess_clip(
+    clip_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """Reprocess a clip that failed or is stuck in processing"""
+    clip = db.query(BatchClip).filter(BatchClip.id == clip_id).first()
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip not found")
+    
+    # Check file exists
+    file_path = Path(clip.file_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    
+    # Reset status
+    clip.status = "pending"
+    clip.error_message = None
+    clip.transcript_text = None
+    clip.word_count = 0
+    clip.processed_at = None
+    clip.processing_duration_ms = None
+    
+    # Delete old segments
+    db.query(TranscriptSegment).filter(TranscriptSegment.clip_id == clip_id).delete()
+    db.commit()
+    
+    # Queue for reprocessing
+    background_tasks.add_task(process_clip_transcription, clip.id)
+    
+    logger.info(f"Requeued clip for processing: {clip_id}")
+    return {"status": "requeued", "clip_id": clip_id}
+
+
+@router.post("/reprocess-all")
+async def reprocess_all_stuck(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """Reprocess all clips stuck in 'processing' or 'pending' status"""
+    stuck_clips = db.query(BatchClip).filter(
+        BatchClip.status.in_(["processing", "pending"])
+    ).all()
+    
+    count = 0
+    for clip in stuck_clips:
+        file_path = Path(clip.file_path)
+        if file_path.exists():
+            clip.status = "pending"
+            clip.error_message = None
+            background_tasks.add_task(process_clip_transcription, clip.id)
+            count += 1
+    
+    db.commit()
+    logger.info(f"Requeued {count} stuck clips for processing")
+    return {"status": "requeued", "count": count}

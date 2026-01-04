@@ -29,9 +29,6 @@ import { Toaster } from './components/ui/sonner';
 type View =
   | 'dashboard'
   | 'nodes'
-  | 'speakers'
-  | 'speaker-correction'
-  | 'reminders'
   | 'history'
   | 'recordings'
   | 'conversations'
@@ -110,7 +107,7 @@ export default function App() {
       <div className="border-b bg-card sticky top-[73px] z-40">
         <div className="container mx-auto px-4">
           <Tabs value={activeView} onValueChange={(v) => setActiveView(v as View)}>
-            <TabsList className="bg-transparent border-b-0 h-12 p-0 gap-2 flex-wrap">
+            <TabsList className="bg-transparent border-b-0 h-12 p-0 w-full justify-between">
               <TabsTrigger
                 value="dashboard"
                 className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-3"
@@ -124,20 +121,6 @@ export default function App() {
               >
                 <Radio className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">Nodes</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="speakers"
-                className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-3"
-              >
-                <Users className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Speakers</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="reminders"
-                className="data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-3"
-              >
-                <Bell className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Reminders</span>
               </TabsTrigger>
               <TabsTrigger
                 value="history"
@@ -204,9 +187,6 @@ export default function App() {
         )}
 
         {activeView === 'nodes' && <NodesView />}
-        {activeView === 'speakers' && <SpeakerManagement />}
-        {activeView === 'speaker-correction' && <SpeakerCorrection />}
-        {activeView === 'reminders' && <ReminderManager />}
         {activeView === 'history' && <TranscriptionHistory />}
         {activeView === 'recordings' && <BatchClipViewer />}
         {activeView === 'conversations' && <ConversationContext />}
@@ -260,14 +240,6 @@ export default function App() {
                         >
                           <Radio className="w-4 h-4 mr-2" />
                           Node Health
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="justify-start"
-                          onClick={() => setActiveView('speaker-correction')}
-                        >
-                          <UserCheck className="w-4 h-4 mr-2" />
-                          Speaker Learning
                         </Button>
                         <Button
                           variant="outline"

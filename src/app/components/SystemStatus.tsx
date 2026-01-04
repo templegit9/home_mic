@@ -1,11 +1,12 @@
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
-import { Activity, HardDrive, Cpu, Radio, Clock, Shield, Users, Bell } from 'lucide-react';
-import { useSystemStatus } from '../hooks/useApi';
+import { Activity, HardDrive, Cpu, Radio, Clock, Shield, FileAudio, Loader2 } from 'lucide-react';
+import { useSystemStatus, useBatchClips } from '../hooks/useApi';
 
 export function SystemStatus() {
   const { status, loading, error } = useSystemStatus();
+  const { clips, total } = useBatchClips({ limit: 50 });
 
   const formatUptime = (seconds: number) => {
     const days = Math.floor(seconds / 86400);
@@ -19,6 +20,29 @@ export function SystemStatus() {
     if (value >= threshold * 0.8) return 'text-yellow-500';
     return 'text-green-500';
   };
+
+  const formatBytes = (bytes: number) => {
+    const gb = bytes / (1024 * 1024 * 1024);
+    return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+  };
+
+  // Calculate batch-specific stats
+  const today = new Date().toDateString();
+  const recordingsToday = clips.filter(c =>
+    new Date(c.recorded_at).toDateString() === today
+  ).length;
+
+  const pendingTranscription = clips.filter(c =>
+    c.status === 'processing' || c.status === 'pending'
+  ).length;
+
+  const lastRecording = clips.length > 0
+    ? new Date(clips[0].recorded_at)
+    : null;
+
+  const timeSinceLastRecording = lastRecording
+    ? Math.floor((Date.now() - lastRecording.getTime()) / 60000)
+    : null;
 
   if (loading && !status) {
     return (
@@ -47,6 +71,7 @@ export function SystemStatus() {
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* System Status */}
       <Card className="p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -66,38 +91,37 @@ export function SystemStatus() {
         </div>
       </Card>
 
+      {/* Recordings Today */}
       <Card className="p-4">
         <div className="flex items-center gap-2 mb-3">
-          <Cpu className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">CPU Usage</span>
+          <FileAudio className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">Recordings Today</span>
         </div>
-        <div className="space-y-2">
-          <div className="flex justify-between items-baseline">
-            <span className={getStatusColor(status.cpuUsage, 80)}>
-              {status.cpuUsage.toFixed(1)}%
-            </span>
-            <span className="text-xs text-muted-foreground">/ 100%</span>
-          </div>
-          <Progress value={status.cpuUsage} />
+        <div className="space-y-1">
+          <p className="text-2xl text-green-500">{recordingsToday}</p>
+          <p className="text-xs text-muted-foreground">
+            {total} total recordings
+          </p>
         </div>
       </Card>
 
+      {/* Pending Transcription */}
       <Card className="p-4">
         <div className="flex items-center gap-2 mb-3">
-          <HardDrive className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">Memory Usage</span>
+          <Loader2 className={`w-4 h-4 text-muted-foreground ${pendingTranscription > 0 ? 'animate-spin' : ''}`} />
+          <span className="text-sm text-muted-foreground">Pending Transcription</span>
         </div>
-        <div className="space-y-2">
-          <div className="flex justify-between items-baseline">
-            <span className={getStatusColor(status.memoryUsage, 90)}>
-              {status.memoryUsage.toFixed(1)}%
-            </span>
-            <span className="text-xs text-muted-foreground">used</span>
-          </div>
-          <Progress value={status.memoryUsage} />
+        <div className="space-y-1">
+          <p className={`text-2xl ${pendingTranscription > 0 ? 'text-yellow-500' : 'text-green-500'}`}>
+            {pendingTranscription}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {pendingTranscription === 0 ? 'All transcribed' : 'In queue'}
+          </p>
         </div>
       </Card>
 
+      {/* Active Nodes */}
       <Card className="p-4">
         <div className="flex items-center gap-2 mb-3">
           <Radio className="w-4 h-4 text-muted-foreground" />
@@ -115,68 +139,77 @@ export function SystemStatus() {
         </div>
       </Card>
 
+      {/* Last Recording */}
       <Card className="p-4">
         <div className="flex items-center gap-2 mb-3">
           <Clock className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">Transcription Latency</span>
+          <span className="text-sm text-muted-foreground">Last Recording</span>
         </div>
         <div className="space-y-1">
-          <p className={`text-2xl ${getStatusColor(status.transcriptionLatency, 2000)}`}>
-            {status.transcriptionLatency}ms
+          <p className="text-2xl">
+            {timeSinceLastRecording !== null
+              ? timeSinceLastRecording < 60
+                ? `${timeSinceLastRecording}m ago`
+                : `${Math.floor(timeSinceLastRecording / 60)}h ago`
+              : 'None'}
           </p>
-          <p className="text-xs text-muted-foreground">Target: &lt; 2000ms</p>
+          <p className="text-xs text-muted-foreground">
+            {lastRecording ? lastRecording.toLocaleTimeString() : 'No recordings yet'}
+          </p>
         </div>
       </Card>
 
+      {/* CPU Usage */}
       <Card className="p-4">
         <div className="flex items-center gap-2 mb-3">
-          <Activity className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">Speaker Accuracy</span>
+          <Cpu className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm text-muted-foreground">CPU Usage</span>
         </div>
         <div className="space-y-2">
           <div className="flex justify-between items-baseline">
-            <span className="text-2xl text-green-500">
-              {status.speakerAccuracy}%
+            <span className={getStatusColor(status.cpuUsage, 80)}>
+              {status.cpuUsage.toFixed(1)}%
             </span>
-            <span className="text-xs text-muted-foreground">Target: &gt; 85%</span>
+            <span className="text-xs text-muted-foreground">/ 100%</span>
           </div>
-          <Progress value={status.speakerAccuracy} />
+          <Progress value={status.cpuUsage} />
         </div>
       </Card>
 
+      {/* Memory */}
       <Card className="p-4">
         <div className="flex items-center gap-2 mb-3">
           <HardDrive className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">Disk Usage</span>
+          <span className="text-sm text-muted-foreground">Memory</span>
         </div>
         <div className="space-y-2">
           <div className="flex justify-between items-baseline">
-            <span>{status.diskUsage.toFixed(1)}%</span>
-            <span className="text-xs text-muted-foreground">used</span>
+            <span className={getStatusColor(status.memoryUsage, 90)}>
+              {formatBytes(status.memoryUsed || 0)}
+            </span>
+            <span className="text-xs text-muted-foreground">/ {formatBytes(status.memoryTotal || 0)}</span>
           </div>
-          <Progress value={status.diskUsage} />
+          <Progress value={status.memoryUsage} />
         </div>
       </Card>
 
+      {/* Storage */}
       <Card className="p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Shield className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">Privacy Status</span>
-        </div>
-        <div className="space-y-2">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Storage</span>
+          </div>
           <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">
             Local Only
           </Badge>
-          <div className="flex gap-4 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <Users className="w-3 h-3" />
-              {status.enrolledSpeakers} speakers
-            </div>
-            <div className="flex items-center gap-1">
-              <Bell className="w-3 h-3" />
-              {status.pendingReminders} reminders
-            </div>
+        </div>
+        <div className="space-y-2">
+          <div className="flex justify-between items-baseline">
+            <span>{formatBytes(status.diskUsed || 0)}</span>
+            <span className="text-xs text-muted-foreground">/ {formatBytes(status.diskTotal || 0)}</span>
           </div>
+          <Progress value={status.diskUsage} />
         </div>
       </Card>
     </div>

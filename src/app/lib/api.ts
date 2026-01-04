@@ -45,7 +45,11 @@ export interface SystemStatus {
     pendingReminders: number;
     cpuUsage: number;
     memoryUsage: number;
+    memoryTotal: number;
+    memoryUsed: number;
     diskUsage: number;
+    diskTotal: number;
+    diskUsed: number;
     transcriptionLatency: number;
     speakerAccuracy: number;
 }
