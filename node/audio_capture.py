@@ -113,7 +113,7 @@ class AudioCapture:
                 rate=self.sample_rate,
                 input=True,
                 input_device_index=self.device_index,
-                frames_per_buffer=1024
+                frames_per_buffer=4096
             )
         except Exception as e:
             logger.error(f"Failed to open audio stream: {e}")
@@ -158,7 +158,7 @@ class AudioCapture:
         while self.is_running:
             try:
                 # Read audio data
-                data = self.stream.read(1024, exception_on_overflow=False)
+                data = self.stream.read(4096, exception_on_overflow=False)
                 buffer.append(data)
                 
                 # Calculate total frames in buffer
@@ -270,7 +270,7 @@ class BatchRecorder:
                 rate=self.sample_rate,
                 input=True,
                 input_device_index=self.device_index,
-                frames_per_buffer=1024
+                frames_per_buffer=4096
             )
         except Exception as e:
             logger.error(f"Failed to open audio stream: {e}")
@@ -339,7 +339,7 @@ class BatchRecorder:
                     while self.is_running and frames_recorded < self.frames_per_batch:
                         # Read audio chunk
                         try:
-                            data = self.stream.read(1024, exception_on_overflow=False)
+                            data = self.stream.read(4096, exception_on_overflow=False)
                             consecutive_errors = 0  # Reset on success
                         except Exception as e:
                             consecutive_errors += 1
@@ -357,7 +357,7 @@ class BatchRecorder:
                                         rate=self.sample_rate,
                                         input=True,
                                         input_device_index=self.device_index,
-                                        frames_per_buffer=1024
+                                        frames_per_buffer=4096
                                     )
                                     consecutive_errors = 0
                                     logger.info("Audio stream restarted successfully")
