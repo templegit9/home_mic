@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
+import asyncio
 
 from .config import API_HOST, API_PORT
 from .database import init_db
@@ -16,6 +17,27 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# Cleanup configuration
+CLEANUP_MAX_AGE_DAYS = 14
+CLEANUP_INTERVAL_HOURS = 24
+
+
+async def scheduled_cleanup():
+    """Background task to cleanup old audio files daily"""
+    from .services.audio_cleanup import cleanup_old_audio_files
+    
+    while True:
+        try:
+            logger.info(f"Running scheduled audio cleanup (files older than {CLEANUP_MAX_AGE_DAYS} days)")
+            result = cleanup_old_audio_files(CLEANUP_MAX_AGE_DAYS)
+            if result["deleted"] > 0:
+                logger.info(f"Cleanup complete: {result['deleted']} files, {result.get('freed_mb', 0):.1f} MB freed")
+        except Exception as e:
+            logger.error(f"Scheduled cleanup failed: {e}")
+        
+        # Wait 24 hours before next cleanup
+        await asyncio.sleep(CLEANUP_INTERVAL_HOURS * 3600)
 
 
 @asynccontextmanager
@@ -36,9 +58,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Transcription service not available: {e}")
     
+    # Start scheduled cleanup task
+    cleanup_task = asyncio.create_task(scheduled_cleanup())
+    logger.info(f"Audio cleanup scheduled (every {CLEANUP_INTERVAL_HOURS} hours, files older than {CLEANUP_MAX_AGE_DAYS} days)")
+    
     yield
     
     # Shutdown
+    cleanup_task.cancel()
     logger.info("Shutting down HomeMic API Server...")
 
 

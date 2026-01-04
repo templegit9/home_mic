@@ -8,7 +8,7 @@ from pathlib import Path
 BASE_DIR = Path("/opt/homemic")
 DATA_DIR = BASE_DIR / "data"
 LOGS_DIR = BASE_DIR / "logs"
-AUDIO_STORAGE_DIR = Path(os.environ.get("HOMEMIC_AUDIO_STORAGE", str(DATA_DIR / "audio")))
+AUDIO_STORAGE_DIR = Path(os.environ.get("HOMEMIC_AUDIO_STORAGE", "/mnt/audio"))
 WHISPER_DIR = Path("/opt/whisper.cpp")
 WHISPER_MODEL = WHISPER_DIR / "models" / "ggml-small.bin"
 WHISPER_MAIN = WHISPER_DIR / "build" / "bin" / "whisper-cli"

@@ -371,3 +371,60 @@ async def restart_node():
         logger.error(f"Node restart failed: {e}")
         return {"success": False, "error": str(e)}
 
+
+# ============ Storage Management ============
+
+from ..services.audio_cleanup import cleanup_old_audio_files, get_storage_stats
+
+
+@router.get("/storage/stats")
+async def storage_statistics():
+    """Get audio storage statistics"""
+    stats = get_storage_stats()
+    return stats
+
+
+@router.post("/storage/cleanup")
+async def run_storage_cleanup(max_age_days: int = 14):
+    """
+    Manually trigger audio cleanup.
+    Deletes WAV files older than max_age_days.
+    Transcripts are preserved in the database.
+    """
+    logger.info(f"Manual cleanup triggered for files older than {max_age_days} days")
+    result = cleanup_old_audio_files(max_age_days)
+    return result
+
+
+@router.get("/storage/cleanup/preview")
+async def preview_cleanup(max_age_days: int = 14):
+    """Preview what would be deleted without actually deleting"""
+    from datetime import datetime, timedelta
+    from ..config import AUDIO_STORAGE_DIR
+    
+    cutoff_date = datetime.now() - timedelta(days=max_age_days)
+    files_to_delete = []
+    total_size = 0
+    
+    if not AUDIO_STORAGE_DIR.exists():
+        return {"files": [], "total_size_mb": 0, "count": 0}
+    
+    for audio_file in AUDIO_STORAGE_DIR.glob("*.wav"):
+        try:
+            mtime = datetime.fromtimestamp(audio_file.stat().st_mtime)
+            if mtime < cutoff_date:
+                size = audio_file.stat().st_size
+                files_to_delete.append({
+                    "name": audio_file.name,
+                    "modified": mtime.isoformat(),
+                    "size_mb": round(size / (1024 * 1024), 2)
+                })
+                total_size += size
+        except:
+            pass
+    
+    return {
+        "files": files_to_delete[:20],  # Limit to first 20
+        "total_count": len(files_to_delete),
+        "total_size_mb": round(total_size / (1024 * 1024), 2)
+    }
