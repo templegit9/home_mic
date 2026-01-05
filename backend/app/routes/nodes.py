@@ -101,8 +101,13 @@ def delete_node(node_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{node_id}/heartbeat")
-def node_heartbeat(node_id: str, latency: float = 0, db: Session = Depends(get_db)):
-    """Update node's last seen timestamp and latency"""
+def node_heartbeat(
+    node_id: str, 
+    latency: float = 0, 
+    ip_address: str = None,
+    db: Session = Depends(get_db)
+):
+    """Update node's last seen timestamp, latency, and IP address"""
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=404, detail="Node not found")
@@ -110,6 +115,10 @@ def node_heartbeat(node_id: str, latency: float = 0, db: Session = Depends(get_d
     node.last_seen = datetime.utcnow()
     node.latency = latency
     node.status = "online"
+    
+    # Store IP if provided by node
+    if ip_address:
+        node.ip_address = ip_address
     
     db.commit()
     return {"status": "ok"}

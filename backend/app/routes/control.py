@@ -329,13 +329,30 @@ async def update_node():
 
 
 @router.post("/node/restart")
-async def restart_node():
+async def restart_node(node_id: str = None):
     """SSH to node and restart the service only (no git pull)"""
     import subprocess
+    from ..database import get_db, Node
     
-    logger.info("Node restart requested from dashboard")
+    logger.info(f"Node restart requested from dashboard (node_id={node_id})")
     
-    hostname = NODE_SSH_CONFIG["hostname"]
+    # Try to get IP from database for this node
+    hostname = None
+    if node_id:
+        db = next(get_db())
+        try:
+            node = db.query(Node).filter(Node.id == node_id).first()
+            if node and node.ip_address:
+                hostname = node.ip_address
+                logger.info(f"Using IP from database: {hostname}")
+        finally:
+            db.close()
+    
+    # Fall back to config if no IP in database
+    if not hostname:
+        hostname = NODE_SSH_CONFIG["hostname"]
+        logger.info(f"Using fallback IP from config: {hostname}")
+    
     username = NODE_SSH_CONFIG["username"]
     
     ssh_command = [

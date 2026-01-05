@@ -61,15 +61,31 @@ class ServerClient:
             return None
     
     def send_heartbeat(self, latency: float = 0) -> bool:
-        """Send heartbeat to server"""
+        """Send heartbeat to server with current IP address"""
         if not self.node_id:
             logger.warning("Cannot send heartbeat: node not registered")
             return False
         
         try:
+            # Get local IP address for SSH restart capability
+            import socket
+            local_ip = None
+            try:
+                # Create a socket to determine the outgoing IP
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                local_ip = s.getsockname()[0]
+                s.close()
+            except Exception:
+                pass
+            
+            params = {"latency": latency}
+            if local_ip:
+                params["ip_address"] = local_ip
+            
             response = self.session.post(
                 f"{self.server_url}/api/nodes/{self.node_id}/heartbeat",
-                params={"latency": latency},
+                params=params,
                 timeout=5
             )
             return response.status_code == 200

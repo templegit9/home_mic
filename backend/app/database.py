@@ -25,6 +25,7 @@ class Node(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     name = Column(String, nullable=False)
     location = Column(String, nullable=False)
+    ip_address = Column(String, nullable=True)  # Node's IP for SSH restart
     status = Column(String, default="offline")  # online, offline, warning
     audio_filtering = Column(Boolean, default=True)
     latency = Column(Float, default=0)
