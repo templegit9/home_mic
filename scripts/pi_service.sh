@@ -84,10 +84,14 @@ fi
 # Get Mac's IP address for network access
 MAC_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo "your-mac-ip")
 
-echo "🚀 Starting frontend..."
-echo "   Local:   http://localhost:5173"
-echo "   Network: http://$MAC_IP:5173"
+# Kill any existing processes on port 9900
+lsof -ti:9900 | xargs kill -9 2>/dev/null || true
+
+echo "🚀 Starting frontend on port 9900..."
+echo "   Local:   http://localhost:9900"
+echo "   Network: http://$MAC_IP:9900"
 echo ""
 echo "   Press Ctrl+C to stop"
 echo ""
-npm run dev -- --host
+npm run dev -- --host --port 9900
+
