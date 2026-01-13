@@ -81,7 +81,13 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-echo "🚀 Starting frontend at http://localhost:5173"
+# Get Mac's IP address for network access
+MAC_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo "your-mac-ip")
+
+echo "🚀 Starting frontend..."
+echo "   Local:   http://localhost:5173"
+echo "   Network: http://$MAC_IP:5173"
+echo ""
 echo "   Press Ctrl+C to stop"
 echo ""
-npm run dev
+npm run dev -- --host
