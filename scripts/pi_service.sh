@@ -65,3 +65,23 @@ echo ""
 echo "✨ Done! The HomeMic node agent will auto-restart if it crashes."
 echo "   View logs: sudo journalctl -u homemic-node -f"
 REMOTE_SCRIPT
+
+# Start local dashboard
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+echo ""
+echo "🖥️  Starting Dashboard..."
+echo "========================="
+cd "$PROJECT_DIR"
+
+# Check if node_modules exists
+if [ ! -d "node_modules" ]; then
+    echo "📦 Installing npm dependencies..."
+    npm install
+fi
+
+echo "🚀 Starting frontend at http://localhost:5173"
+echo "   Press Ctrl+C to stop"
+echo ""
+npm run dev
