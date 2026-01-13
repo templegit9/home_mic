@@ -11,13 +11,17 @@ ssh "$PI_USER@$PI_HOST" << 'REMOTE_SCRIPT'
 set -e
 
 echo ""
+echo "📥 Pulling latest code..."
+cd /home/homemic-node/homemic-node
+git pull
+
+echo ""
 echo "📦 Installing HomeMic Node service..."
 
 # Check if service file exists in repo
 SERVICE_FILE="/home/homemic-node/homemic-node/node/homemic-node.service"
 if [ ! -f "$SERVICE_FILE" ]; then
     echo "❌ Service file not found at $SERVICE_FILE"
-    echo "   Make sure you've pulled the latest code: cd ~/homemic-node && git pull"
     exit 1
 fi
 
@@ -49,11 +53,11 @@ fi
 echo ""
 echo "🌐 Server Connection:"
 echo "====================="
-SERVER_URL=$(grep SERVER_URL /home/homemic-node/homemic-node/node/config.py | cut -d'"' -f2)
+SERVER_URL=$(grep -oP 'http://[^"]+' /home/homemic-node/homemic-node/node/config.py | head -1)
 if curl -s --connect-timeout 5 "$SERVER_URL/" > /dev/null 2>&1; then
-    echo "✅ GCP server is reachable at $SERVER_URL"
+    echo "✅ Server is reachable at $SERVER_URL"
 else
-    echo "⚠️  Cannot reach GCP server at $SERVER_URL"
+    echo "⚠️  Cannot reach server at $SERVER_URL"
 fi
 
 echo ""
