@@ -13,6 +13,7 @@ set -e
 echo ""
 echo "📥 Pulling latest code..."
 cd /home/homemic-node/homemic-node
+git stash
 git pull
 
 echo ""
