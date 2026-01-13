@@ -10,7 +10,7 @@ WorkingDirectory=/home/homemic-node/homemic-node/node
 ExecStart=/home/homemic-node/homemic-node/node/venv/bin/python /home/homemic-node/homemic-node/node/agent.py
 Restart=always
 RestartSec=5
-Environment=HOMEMIC_SERVER=http://35.224.111.227:8420
+Environment=HOMEMIC_SERVER=http://10.0.0.135:8420
 
 # Give time for audio device to be ready
 ExecStartPre=/bin/sleep 3

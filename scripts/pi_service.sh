@@ -1,0 +1,62 @@
+#!/bin/bash
+# HomeMic Pi Service Manager
+# Run this script from your Mac to set up and manage the Pi node service
+
+PI_HOST="${HOMEMIC_PI_HOST:-10.0.0.28}"  # homemic-node
+PI_USER="${HOMEMIC_PI_USER:-homemic-node}"
+
+echo "🔌 Connecting to Pi ($PI_USER@$PI_HOST)..."
+
+ssh "$PI_USER@$PI_HOST" << 'REMOTE_SCRIPT'
+set -e
+
+echo ""
+echo "📦 Installing HomeMic Node service..."
+
+# Check if service file exists in repo
+SERVICE_FILE="/home/homemic-node/homemic-node/node/homemic-node.service"
+if [ ! -f "$SERVICE_FILE" ]; then
+    echo "❌ Service file not found at $SERVICE_FILE"
+    echo "   Make sure you've pulled the latest code: cd ~/homemic-node && git pull"
+    exit 1
+fi
+
+# Copy service file
+sudo cp "$SERVICE_FILE" /etc/systemd/system/
+sudo systemctl daemon-reload
+
+# Enable and start service
+sudo systemctl enable homemic-node
+sudo systemctl restart homemic-node
+
+# Wait a moment for service to start
+sleep 3
+
+# Check status
+echo ""
+echo "📊 Service Status:"
+echo "=================="
+if sudo systemctl is-active --quiet homemic-node; then
+    echo "✅ HomeMic Node service is RUNNING"
+    sudo systemctl status homemic-node --no-pager | head -15
+else
+    echo "❌ HomeMic Node service FAILED to start"
+    sudo journalctl -u homemic-node -n 20 --no-pager
+    exit 1
+fi
+
+# Check if communicating with server
+echo ""
+echo "🌐 Server Connection:"
+echo "====================="
+SERVER_URL=$(grep SERVER_URL /home/homemic-node/homemic-node/node/config.py | cut -d'"' -f2)
+if curl -s --connect-timeout 5 "$SERVER_URL/" > /dev/null 2>&1; then
+    echo "✅ GCP server is reachable at $SERVER_URL"
+else
+    echo "⚠️  Cannot reach GCP server at $SERVER_URL"
+fi
+
+echo ""
+echo "✨ Done! The HomeMic node agent will auto-restart if it crashes."
+echo "   View logs: sudo journalctl -u homemic-node -f"
+REMOTE_SCRIPT

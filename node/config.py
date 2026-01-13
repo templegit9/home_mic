@@ -4,7 +4,7 @@ HomeMic Node Agent Configuration
 import os
 
 # Server Configuration
-SERVER_URL = os.environ.get("HOMEMIC_SERVER", "http://10.0.0.120:8420")
+SERVER_URL = os.environ.get("HOMEMIC_SERVER", "http://10.0.0.135:8420")
 NODE_ID = os.environ.get("HOMEMIC_NODE_ID", "")  # Set after registration
 NODE_NAME = os.environ.get("HOMEMIC_NODE_NAME", "Living Room")
 NODE_LOCATION = os.environ.get("HOMEMIC_LOCATION", "Living Room")
