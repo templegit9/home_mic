@@ -255,6 +255,79 @@ def delete_audio_file(clip_id: str):
     raise HTTPException(status_code=404, detail="Audio file not found")
 
 
+@app.post("/transcribe-local/{clip_id}")
+async def transcribe_local_file(
+    clip_id: str,
+    background_tasks: BackgroundTasks
+):
+    """
+    Transcribe an audio file that already exists on the Mac Mini.
+    Used for re-transcription with new model.
+    """
+    audio_path = AUDIO_STORAGE / f"{clip_id}.wav"
+    
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail=f"Audio file not found: {clip_id}")
+    
+    job_id = str(uuid.uuid4())
+    
+    job = {
+        "job_id": job_id,
+        "status": "pending",
+        "clip_id": clip_id,
+        "audio_path": str(audio_path),
+        "transcript": None,
+        "segments": None,
+        "error": None,
+        "created_at": time.time(),
+        "completed_at": None
+    }
+    transcription_jobs[job_id] = job
+    
+    background_tasks.add_task(process_transcription, job_id)
+    
+    return {"job_id": job_id, "clip_id": clip_id, "status": "pending"}
+
+
+@app.post("/retranscribe-all")
+async def retranscribe_all_files(
+    background_tasks: BackgroundTasks,
+    batch_size: int = 5
+):
+    """
+    Queue all existing audio files for re-transcription with the new model.
+    Returns list of job IDs.
+    """
+    audio_files = list(AUDIO_STORAGE.glob("*.wav"))[:batch_size]
+    
+    jobs = []
+    for audio_path in audio_files:
+        clip_id = audio_path.stem  # filename without extension
+        job_id = str(uuid.uuid4())
+        
+        job = {
+            "job_id": job_id,
+            "status": "pending",
+            "clip_id": clip_id,
+            "audio_path": str(audio_path),
+            "transcript": None,
+            "segments": None,
+            "error": None,
+            "created_at": time.time(),
+            "completed_at": None
+        }
+        transcription_jobs[job_id] = job
+        background_tasks.add_task(process_transcription, job_id)
+        jobs.append({"job_id": job_id, "clip_id": clip_id})
+    
+    return {
+        "status": "queued",
+        "count": len(jobs),
+        "total_files": len(list(AUDIO_STORAGE.glob("*.wav"))),
+        "jobs": jobs
+    }
+
+
 @app.get("/storage/stats")
 def storage_stats():
     """Get storage statistics"""
